@@ -22,6 +22,48 @@ check_root() {
     fi
 }
 
+# 检查并安装Privoxy
+install_privoxy() {
+    # 检查Privoxy是否已安装
+    if ! command -v privoxy &> /dev/null; then
+        echo -e "${YELLOW}正在安装Privoxy...${NC}"
+        # 根据不同的Linux发行版安装Privoxy
+        if command -v apt-get &> /dev/null; then
+            apt-get update
+            apt-get install -y privoxy
+        elif command -v yum &> /dev/null; then
+            yum install -y privoxy
+        elif command -v dnf &> /dev/null; then
+            dnf install -y privoxy
+        else
+            echo -e "${RED}无法确定包管理器，请手动安装Privoxy${NC}"
+            exit 1
+        fi
+    fi
+}
+
+# 配置Privoxy
+configure_privoxy() {
+    # 备份原始配置文件
+    cp /etc/privoxy/config /etc/privoxy/config.bak
+    
+    # 添加SOCKS5转发配置
+    echo "forward-socks5 / $local_ip:$local_port ." >> /etc/privoxy/config
+    
+    # 重启Privoxy服务
+    systemctl restart privoxy
+    systemctl enable privoxy
+    
+    # 检查服务状态
+    if systemctl is-active --quiet privoxy; then
+        echo -e "${GREEN}Privoxy服务已成功启动${NC}"
+        echo "HTTP代理地址: 127.0.0.1:8118"
+    else
+        echo -e "${RED}Privoxy服务启动失败${NC}"
+        exit 1
+    fi
+}
+
 # 显示欢迎信息
 show_welcome() {
     # 清屏
@@ -105,6 +147,17 @@ setup_socks5_proxy() {
     if screen -list | grep -q "socks_proxy"; then
         echo -e "${GREEN}SSH隧道创建成功！${NC}"
         echo "本地监听地址: $local_ip:$local_port"
+        
+        # 安装和配置Privoxy
+        install_privoxy
+        configure_privoxy
+        
+        echo -e "\n${GREEN}代理设置完成！${NC}"
+        echo "SOCKS5代理地址: $local_ip:$local_port"
+        echo "HTTP代理地址: 127.0.0.1:8118"
+        echo -e "\n${YELLOW}使用说明：${NC}"
+        echo "1. 在浏览器中设置HTTP代理为 127.0.0.1:8118"
+        echo "2. 或在系统网络设置中配置HTTP代理"
     else
         echo -e "${RED}SSH隧道创建失败！${NC}"
     fi
