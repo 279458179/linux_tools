@@ -427,6 +427,68 @@ manage_selinux() {
     read -p "按回车键继续..."
 }
 
+# 修改本地DNS
+configure_dns() {
+    clear
+    echo -e "${GREEN}修改本地DNS${NC}"
+    echo "----------------------------------------"
+    
+    # 获取当前DNS配置
+    echo "当前DNS配置："
+    if [ -f /etc/resolv.conf ]; then
+        cat /etc/resolv.conf | grep "nameserver"
+    fi
+    
+    echo -e "\n${YELLOW}将设置以下DNS服务器：${NC}"
+    echo "1. Cloudflare DNS (1.1.1.1)"
+    echo "2. Google DNS (8.8.8.8)"
+    
+    read -p "是否继续？(y/n): " confirm
+    if [[ $confirm != "y" && $confirm != "Y" ]]; then
+        echo -e "${YELLOW}已取消操作${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 备份原始DNS配置
+    if [ -f /etc/resolv.conf ]; then
+        cp /etc/resolv.conf /etc/resolv.conf.bak
+    fi
+    
+    # 根据不同的系统配置DNS
+    if command -v apt-get &>/dev/null; then
+        # Ubuntu/Debian
+        cat > /etc/resolv.conf << EOF
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+        # 防止resolv.conf被覆盖
+        chattr +i /etc/resolv.conf 2>/dev/null
+    elif command -v yum &>/dev/null || command -v dnf &>/dev/null; then
+        # CentOS/RHEL
+        cat > /etc/resolv.conf << EOF
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+        # 防止resolv.conf被覆盖
+        chattr +i /etc/resolv.conf 2>/dev/null
+    fi
+    
+    echo -e "${GREEN}DNS配置已更新${NC}"
+    echo "新的DNS配置："
+    cat /etc/resolv.conf
+    
+    # 测试DNS解析
+    echo -e "\n${YELLOW}正在测试DNS解析...${NC}"
+    if ping -c 1 google.com &>/dev/null; then
+        echo -e "${GREEN}DNS解析测试成功！${NC}"
+    else
+        echo -e "${RED}DNS解析测试失败，请检查网络连接${NC}"
+    fi
+    
+    read -p "按回车键返回..."
+}
+
 # 系统管理菜单
 system_management_menu() {
     while true; do
@@ -437,15 +499,17 @@ system_management_menu() {
         echo "2. 配置IPv4地址"
         echo "3. 防火墙管理"
         echo "4. SELinux管理"
+        echo "5. 修改本地DNS"
         echo "0. 返回主菜单"
         echo "----------------------------------------"
-        read -p "请选择操作 [0-4]: " choice
+        read -p "请选择操作 [0-5]: " choice
         
         case $choice in
             1) show_system_info ;;
             2) configure_ipv4 ;;
             3) manage_firewall ;;
             4) manage_selinux ;;
+            5) configure_dns ;;
             0) return ;;
             *)
                 echo -e "${RED}无效的选择${NC}"
