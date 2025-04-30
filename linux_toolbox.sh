@@ -85,6 +85,27 @@ show_menu() {
     read -p "请输入选项 [0-1]: " choice
 }
 
+# 配置SSH密钥认证
+setup_ssh_key() {
+    # 检查是否已有SSH密钥
+    if [ ! -f ~/.ssh/id_rsa ]; then
+        echo -e "${YELLOW}正在生成SSH密钥...${NC}"
+        # 生成SSH密钥，不设置密码
+        ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+    fi
+    
+    # 显示公钥
+    echo -e "${GREEN}您的SSH公钥：${NC}"
+    cat ~/.ssh/id_rsa.pub
+    echo ""
+    
+    # 提示用户将公钥添加到远程服务器
+    echo -e "${YELLOW}请将上面的公钥添加到远程服务器的 ~/.ssh/authorized_keys 文件中${NC}"
+    echo "您可以通过以下命令添加："
+    echo "echo '$(cat ~/.ssh/id_rsa.pub)' >> ~/.ssh/authorized_keys"
+    read -p "添加完成后按回车继续..."
+}
+
 # SOCKS5代理连接功能
 setup_socks5_proxy() {
     # 清屏
@@ -136,6 +157,9 @@ setup_socks5_proxy() {
         read -p "按回车键返回主菜单..."
         return
     fi
+    
+    # 配置SSH密钥认证
+    setup_ssh_key
     
     # 测试SSH连接
     echo -e "${YELLOW}正在测试SSH连接...${NC}"
