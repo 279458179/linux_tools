@@ -98,11 +98,12 @@ show_welcome() {
 # 显示主菜单
 show_menu() {
     # 显示所有可用的功能选项
-    echo "1. SOCKS5代理连接"
+    echo "1. 系统管理"
+    echo "2. SOCKS5代理连接"
     echo "0. 退出"
     echo ""
     # 提示用户输入选择
-    read -p "请输入选项 [0-1]: " choice
+    read -p "请输入选项 [0-2]: " choice
 }
 
 # 配置SSH密钥认证
@@ -252,6 +253,208 @@ setup_socks5_proxy() {
     read -p "按回车键返回主菜单..."
 }
 
+# 显示系统信息
+show_system_info() {
+    clear
+    echo -e "${GREEN}系统信息：${NC}"
+    echo "----------------------------------------"
+    echo "操作系统: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
+    echo "内核版本: $(uname -r)"
+    echo "主机名: $(hostname)"
+    echo "CPU信息: $(lscpu | grep "Model name" | sed -r 's/Model name:\s{1,}//')"
+    echo "CPU核心数: $(nproc)"
+    echo "内存总量: $(free -h | grep Mem | awk '{print $2}')"
+    echo "内存使用: $(free -h | grep Mem | awk '{print $3}')"
+    echo "磁盘使用: $(df -h / | tail -1 | awk '{print $5}')"
+    echo "系统运行时间: $(uptime -p)"
+    echo "----------------------------------------"
+    read -p "按回车键返回..."
+}
+
+# 配置IPv4地址
+configure_ipv4() {
+    clear
+    echo -e "${GREEN}IPv4地址配置${NC}"
+    echo "----------------------------------------"
+    
+    # 获取网络接口列表
+    interfaces=($(ip -o link show | awk -F': ' '{print $2}' | grep -v lo))
+    
+    echo "可用的网络接口："
+    for i in "${!interfaces[@]}"; do
+        echo "$((i+1)). ${interfaces[$i]}"
+    done
+    
+    read -p "请选择要配置的网络接口 [1-${#interfaces[@]}]: " choice
+    if [[ ! $choice =~ ^[0-9]+$ ]] || [ $choice -lt 1 ] || [ $choice -gt ${#interfaces[@]} ]; then
+        echo -e "${RED}无效的选择${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    interface=${interfaces[$((choice-1))]}
+    
+    # 获取当前IP配置
+    current_ip=$(ip addr show $interface | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    current_gateway=$(ip route | grep default | grep $interface | awk '{print $3}')
+    
+    echo "当前IP地址: $current_ip"
+    echo "当前网关: $current_gateway"
+    
+    read -p "请输入新的IP地址 [格式: x.x.x.x]: " new_ip
+    read -p "请输入子网掩码 [格式: 24]: " netmask
+    read -p "请输入网关地址 [格式: x.x.x.x]: " gateway
+    
+    # 根据不同的系统配置IP
+    if command -v apt-get &>/dev/null; then
+        # Ubuntu/Debian
+        cat > /etc/netplan/01-netcfg.yaml << EOF
+network:
+  version: 2
+  ethernets:
+    $interface:
+      dhcp4: no
+      addresses: [$new_ip/$netmask]
+      gateway4: $gateway
+      nameservers:
+        addresses: [8.8.8.8, 8.8.4.4]
+EOF
+        netplan apply
+    elif command -v yum &>/dev/null || command -v dnf &>/dev/null; then
+        # CentOS/RHEL
+        cat > /etc/sysconfig/network-scripts/ifcfg-$interface << EOF
+DEVICE=$interface
+BOOTPROTO=static
+IPADDR=$new_ip
+PREFIX=$netmask
+GATEWAY=$gateway
+DNS1=8.8.8.8
+DNS2=8.8.4.4
+ONBOOT=yes
+EOF
+        systemctl restart NetworkManager
+    fi
+    
+    echo -e "${GREEN}IP配置已更新${NC}"
+    read -p "按回车键返回..."
+}
+
+# 管理防火墙
+manage_firewall() {
+    clear
+    echo -e "${GREEN}防火墙管理${NC}"
+    echo "----------------------------------------"
+    echo "1. 查看防火墙状态"
+    echo "2. 停止防火墙"
+    echo "3. 禁用防火墙"
+    echo "4. 返回上级菜单"
+    read -p "请选择操作 [1-4]: " choice
+    
+    case $choice in
+        1)
+            if command -v ufw &>/dev/null; then
+                ufw status
+            elif command -v firewall-cmd &>/dev/null; then
+                firewall-cmd --state
+            fi
+            ;;
+        2)
+            if command -v ufw &>/dev/null; then
+                ufw disable
+            elif command -v firewall-cmd &>/dev/null; then
+                systemctl stop firewalld
+            fi
+            echo -e "${GREEN}防火墙已停止${NC}"
+            ;;
+        3)
+            if command -v ufw &>/dev/null; then
+                ufw disable
+                systemctl disable ufw
+            elif command -v firewall-cmd &>/dev/null; then
+                systemctl stop firewalld
+                systemctl disable firewalld
+            fi
+            echo -e "${GREEN}防火墙已禁用${NC}"
+            ;;
+        4)
+            return
+            ;;
+        *)
+            echo -e "${RED}无效的选择${NC}"
+            ;;
+    esac
+    read -p "按回车键继续..."
+}
+
+# 管理SELinux
+manage_selinux() {
+    clear
+    echo -e "${GREEN}SELinux管理${NC}"
+    echo "----------------------------------------"
+    
+    if ! command -v getenforce &>/dev/null; then
+        echo -e "${YELLOW}系统未安装SELinux${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    echo "1. 查看SELinux状态"
+    echo "2. 临时关闭SELinux"
+    echo "3. 永久关闭SELinux"
+    echo "4. 返回上级菜单"
+    read -p "请选择操作 [1-4]: " choice
+    
+    case $choice in
+        1)
+            echo "当前SELinux状态: $(getenforce)"
+            ;;
+        2)
+            setenforce 0
+            echo -e "${GREEN}SELinux已临时关闭${NC}"
+            ;;
+        3)
+            sed -i 's/^SELINUX=.*/SELINUX=disabled/' /etc/selinux/config
+            setenforce 0
+            echo -e "${GREEN}SELinux已永久关闭，需要重启系统生效${NC}"
+            ;;
+        4)
+            return
+            ;;
+        *)
+            echo -e "${RED}无效的选择${NC}"
+            ;;
+    esac
+    read -p "按回车键继续..."
+}
+
+# 系统管理菜单
+system_management_menu() {
+    while true; do
+        clear
+        echo -e "${GREEN}系统管理${NC}"
+        echo "----------------------------------------"
+        echo "1. 查看系统信息"
+        echo "2. 配置IPv4地址"
+        echo "3. 防火墙管理"
+        echo "4. SELinux管理"
+        echo "0. 返回主菜单"
+        echo "----------------------------------------"
+        read -p "请选择操作 [0-4]: " choice
+        
+        case $choice in
+            1) show_system_info ;;
+            2) configure_ipv4 ;;
+            3) manage_firewall ;;
+            4) manage_selinux ;;
+            0) return ;;
+            *)
+                echo -e "${RED}无效的选择${NC}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
 # 主函数
 main() {
     # 检查root权限
@@ -267,6 +470,10 @@ main() {
         # 根据用户选择执行相应功能
         case $choice in
             1) 
+                # 调用系统管理菜单
+                system_management_menu
+                ;;
+            2) 
                 # 调用SOCKS5代理连接功能
                 setup_socks5_proxy
                 ;;
