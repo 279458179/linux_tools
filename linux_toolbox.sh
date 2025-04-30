@@ -580,6 +580,131 @@ mount_disk() {
     read -p "按回车键返回..."
 }
 
+# 在线扩容磁盘
+resize_disk() {
+    clear
+    echo -e "${GREEN}在线扩容磁盘${NC}"
+    echo "----------------------------------------"
+    
+    # 检查是否安装了lvm2
+    if ! command -v pvcreate &>/dev/null; then
+        echo -e "${YELLOW}正在安装LVM工具...${NC}"
+        if command -v apt-get &>/dev/null; then
+            apt-get update
+            apt-get install -y lvm2
+        elif command -v yum &>/dev/null; then
+            yum install -y lvm2
+        elif command -v dnf &>/dev/null; then
+            dnf install -y lvm2
+        else
+            echo -e "${RED}无法安装LVM工具，请手动安装lvm2包${NC}"
+            read -p "按回车键返回..."
+            return
+        fi
+    fi
+    
+    # 显示当前磁盘信息
+    echo -e "${YELLOW}当前磁盘信息：${NC}"
+    lsblk
+    echo "----------------------------------------"
+    
+    # 显示当前LVM信息
+    echo -e "${YELLOW}当前LVM信息：${NC}"
+    vgs
+    echo "----------------------------------------"
+    lvs
+    echo "----------------------------------------"
+    
+    # 获取要添加的磁盘设备
+    read -p "请输入要添加的磁盘设备（例如：/dev/sdb）: " new_disk
+    
+    # 检查磁盘设备是否存在
+    if [ ! -b "$new_disk" ]; then
+        echo -e "${RED}错误：磁盘设备 $new_disk 不存在${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 获取目标逻辑卷
+    read -p "请输入目标逻辑卷（例如：/dev/mapper/ubuntu--vg-ubuntu--lv）: " target_lv
+    
+    # 检查逻辑卷是否存在
+    if ! lvs "$target_lv" &>/dev/null; then
+        echo -e "${RED}错误：逻辑卷 $target_lv 不存在${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 获取卷组名称
+    vg_name=$(lvs --noheadings -o vg_name "$target_lv" | tr -d ' ')
+    
+    # 检查磁盘是否已经是物理卷
+    if ! pvs "$new_disk" &>/dev/null; then
+        echo -e "${YELLOW}正在将磁盘 $new_disk 初始化为物理卷...${NC}"
+        pvcreate "$new_disk"
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}创建物理卷失败${NC}"
+            read -p "按回车键返回..."
+            return
+        fi
+    fi
+    
+    # 扩展卷组
+    echo -e "${YELLOW}正在将物理卷添加到卷组 $vg_name...${NC}"
+    vgextend "$vg_name" "$new_disk"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}扩展卷组失败${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 获取逻辑卷的当前大小
+    current_size=$(lvs --noheadings -o lv_size --units g "$target_lv" | tr -d ' ')
+    
+    # 扩展逻辑卷
+    echo -e "${YELLOW}正在扩展逻辑卷...${NC}"
+    lvextend -l +100%FREE "$target_lv"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}扩展逻辑卷失败${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 获取文件系统类型
+    fs_type=$(blkid -s TYPE -o value "$target_lv")
+    
+    # 调整文件系统大小
+    echo -e "${YELLOW}正在调整文件系统大小...${NC}"
+    case $fs_type in
+        ext4|ext3|ext2)
+            resize2fs "$target_lv"
+            ;;
+        xfs)
+            xfs_growfs "$target_lv"
+            ;;
+        *)
+            echo -e "${RED}不支持的文件系统类型：$fs_type${NC}"
+            read -p "按回车键返回..."
+            return
+            ;;
+    esac
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}调整文件系统大小失败${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 显示扩容结果
+    echo -e "\n${GREEN}扩容完成！${NC}"
+    echo "扩容后的逻辑卷信息："
+    lvs "$target_lv"
+    echo -e "\n文件系统信息："
+    df -h "$target_lv"
+    
+    read -p "按回车键返回..."
+}
+
 # 系统管理菜单
 system_management_menu() {
     while true; do
@@ -592,9 +717,10 @@ system_management_menu() {
         echo "4. SELinux管理"
         echo "5. 修改本地DNS"
         echo "6. 在线挂载磁盘"
+        echo "7. 在线扩容磁盘"
         echo "0. 返回主菜单"
         echo "----------------------------------------"
-        read -p "请选择操作 [0-6]: " choice
+        read -p "请选择操作 [0-7]: " choice
         
         case $choice in
             1) show_system_info ;;
@@ -603,6 +729,7 @@ system_management_menu() {
             4) manage_selinux ;;
             5) configure_dns ;;
             6) mount_disk ;;
+            7) resize_disk ;;
             0) return ;;
             *)
                 echo -e "${RED}无效的选择${NC}"
