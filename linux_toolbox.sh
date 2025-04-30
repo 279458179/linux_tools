@@ -198,5 +198,14 @@ main() {
     done
 }
 
-# 执行主函数
-main
+# 确保脚本在非交互式shell中也能运行
+if [ -t 0 ]; then
+    # 交互式shell
+    main
+else
+    # 非交互式shell，先下载脚本再执行
+    echo "正在下载脚本..."
+    curl -sL https://raw.githubusercontent.com/279458179/linux_tools/master/linux_toolbox.sh -o /tmp/linux_toolbox.sh
+    chmod +x /tmp/linux_toolbox.sh
+    exec /tmp/linux_toolbox.sh
+fi
