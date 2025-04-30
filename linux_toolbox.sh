@@ -772,20 +772,23 @@ install_ollama() {
         fi
     fi
     
-    # 检查是否已经运行了Ollama容器
-    if docker ps | grep -q ollama; then
-        echo -e "${YELLOW}Ollama已经在运行中${NC}"
-        echo "容器信息："
-        docker ps | grep ollama
-        read -p "是否重新部署？(y/n): " redeploy
-        if [[ $redeploy != "y" && $redeploy != "Y" ]]; then
-            echo -e "${YELLOW}已取消操作${NC}"
-            read -p "按回车键返回..."
-            return
+    # 检查端口占用
+    if netstat -tuln | grep -q ":11434 "; then
+        echo -e "${YELLOW}检测到端口11434已被占用，正在清理...${NC}"
+        # 查找占用端口的进程
+        pid=$(netstat -tuln | grep ":11434 " | awk '{print $7}' | cut -d'/' -f1)
+        if [ ! -z "$pid" ]; then
+            echo -e "${YELLOW}正在停止占用端口的进程 (PID: $pid)...${NC}"
+            kill -9 $pid
         fi
-        # 停止并删除现有容器
-        docker stop ollama
-        docker rm ollama
+    fi
+    
+    # 检查并清理已存在的Ollama容器
+    if docker ps -a | grep -q ollama; then
+        echo -e "${YELLOW}发现已存在的Ollama容器，正在清理...${NC}"
+        docker stop ollama 2>/dev/null
+        docker rm ollama 2>/dev/null
+        echo -e "${GREEN}已清理旧的Ollama容器${NC}"
     fi
     
     # 创建Ollama数据目录
