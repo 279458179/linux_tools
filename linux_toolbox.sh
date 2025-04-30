@@ -41,6 +41,26 @@ install_privoxy() {
     fi
 }
 
+# 检查并安装sshpass
+install_sshpass() {
+    # 检查sshpass是否已安装
+    if ! command -v sshpass &>/dev/null; then
+        echo -e "${YELLOW}正在安装sshpass...${NC}"
+        # 根据不同的Linux发行版安装sshpass
+        if command -v apt-get &>/dev/null; then
+            apt-get update
+            apt-get install -y sshpass
+        elif command -v yum &>/dev/null; then
+            yum install -y sshpass
+        elif command -v dnf &>/dev/null; then
+            dnf install -y sshpass
+        else
+            echo -e "${RED}无法确定包管理器，请手动安装sshpass${NC}"
+            exit 1
+        fi
+    fi
+}
+
 # 配置Privoxy
 configure_privoxy() {
     # 备份原始配置文件
@@ -139,6 +159,8 @@ setup_socks5_proxy() {
     read -p "请输入本地监听IP地址 [默认127.0.0.1]: " local_ip
     read -p "请输入本地监听端口 [默认1080]: " local_port
     read -p "请输入远程服务器用户名: " username
+    read -s -p "请输入远程服务器密码: " password
+    echo ""  # 换行
     
     # 设置默认值
     local_ip=${local_ip:-127.0.0.1}
@@ -158,12 +180,12 @@ setup_socks5_proxy() {
         return
     fi
     
-    # 配置SSH密钥认证
-    setup_ssh_key
+    # 安装sshpass
+    install_sshpass
     
     # 测试SSH连接
     echo -e "${YELLOW}正在测试SSH连接...${NC}"
-    if ! ssh -p $remote_port -o ConnectTimeout=5 $username@$remote_ip "echo 'SSH连接测试成功'"; then
+    if ! sshpass -p "$password" ssh -p $remote_port -o ConnectTimeout=5 $username@$remote_ip "echo 'SSH连接测试成功'"; then
         echo -e "${RED}SSH连接测试失败，请检查用户名、密码或服务器状态${NC}"
         read -p "按回车键返回主菜单..."
         return
@@ -171,8 +193,8 @@ setup_socks5_proxy() {
     
     # 创建SSH隧道
     echo -e "${YELLOW}正在创建SSH隧道...${NC}"
-    # 使用screen创建后台会话运行SSH隧道，添加-v参数显示详细连接信息
-    screen -dmS socks_proxy ssh -v -p $remote_port -D $local_ip:$local_port $username@$remote_ip
+    # 使用screen创建后台会话运行SSH隧道，使用sshpass自动输入密码
+    screen -dmS socks_proxy sshpass -p "$password" ssh -v -p $remote_port -D $local_ip:$local_port $username@$remote_ip
     
     # 等待几秒钟让连接建立
     sleep 3
@@ -222,6 +244,9 @@ setup_socks5_proxy() {
     else
         echo -e "${RED}SSH隧道创建失败！${NC}"
     fi
+    
+    # 清除密码变量
+    unset password
     
     # 等待用户确认
     read -p "按回车键返回主菜单..."
