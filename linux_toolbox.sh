@@ -489,6 +489,97 @@ EOF
     read -p "按回车键返回..."
 }
 
+# 在线挂载磁盘
+mount_disk() {
+    clear
+    echo -e "${GREEN}在线挂载磁盘${NC}"
+    echo "----------------------------------------"
+    
+    # 显示当前磁盘信息
+    echo -e "${YELLOW}当前磁盘信息：${NC}"
+    lsblk
+    echo "----------------------------------------"
+    
+    # 获取磁盘设备
+    read -p "请输入要挂载的磁盘设备（例如：/dev/vdb）: " disk_device
+    
+    # 检查磁盘设备是否存在
+    if [ ! -b "$disk_device" ]; then
+        echo -e "${RED}错误：磁盘设备 $disk_device 不存在${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 获取挂载点
+    read -p "请输入挂载点（例如：/mnt/data）: " mount_point
+    
+    # 检查挂载点是否存在，不存在则创建
+    if [ ! -d "$mount_point" ]; then
+        mkdir -p "$mount_point"
+        echo -e "${GREEN}已创建挂载点目录：$mount_point${NC}"
+    fi
+    
+    # 检查磁盘是否已经挂载
+    if mount | grep -q "$disk_device"; then
+        echo -e "${YELLOW}警告：磁盘 $disk_device 已经挂载${NC}"
+        read -p "是否卸载后重新挂载？(y/n): " remount
+        if [[ $remount != "y" && $remount != "Y" ]]; then
+            echo -e "${YELLOW}已取消操作${NC}"
+            read -p "按回车键返回..."
+            return
+        fi
+        umount "$disk_device"
+    fi
+    
+    # 检查磁盘是否已格式化
+    if ! blkid "$disk_device" &>/dev/null; then
+        echo -e "${YELLOW}磁盘未格式化，是否现在格式化？(y/n): ${NC}"
+        read -p "请选择 (y/n): " format_choice
+        if [[ $format_choice == "y" || $format_choice == "Y" ]]; then
+            echo -e "${YELLOW}正在格式化磁盘...${NC}"
+            mkfs.ext4 "$disk_device"
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}格式化失败${NC}"
+                read -p "按回车键返回..."
+                return
+            fi
+            echo -e "${GREEN}格式化完成${NC}"
+        else
+            echo -e "${YELLOW}已取消操作${NC}"
+            read -p "按回车键返回..."
+            return
+        fi
+    fi
+    
+    # 获取磁盘UUID
+    disk_uuid=$(blkid -s UUID -o value "$disk_device")
+    
+    # 挂载磁盘
+    echo -e "${YELLOW}正在挂载磁盘...${NC}"
+    mount "$disk_device" "$mount_point"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}挂载失败${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 检查是否已经在fstab中
+    if grep -q "$disk_uuid" /etc/fstab; then
+        echo -e "${YELLOW}该磁盘已在fstab中配置${NC}"
+    else
+        # 添加到fstab
+        echo "UUID=$disk_uuid $mount_point ext4 defaults 0 0" >> /etc/fstab
+        echo -e "${GREEN}已添加到fstab${NC}"
+    fi
+    
+    # 显示挂载结果
+    echo -e "\n${GREEN}挂载完成！${NC}"
+    echo "磁盘信息："
+    df -h "$mount_point"
+    
+    read -p "按回车键返回..."
+}
+
 # 系统管理菜单
 system_management_menu() {
     while true; do
@@ -500,9 +591,10 @@ system_management_menu() {
         echo "3. 防火墙管理"
         echo "4. SELinux管理"
         echo "5. 修改本地DNS"
+        echo "6. 在线挂载磁盘"
         echo "0. 返回主菜单"
         echo "----------------------------------------"
-        read -p "请选择操作 [0-5]: " choice
+        read -p "请选择操作 [0-6]: " choice
         
         case $choice in
             1) show_system_info ;;
@@ -510,6 +602,7 @@ system_management_menu() {
             3) manage_firewall ;;
             4) manage_selinux ;;
             5) configure_dns ;;
+            6) mount_disk ;;
             0) return ;;
             *)
                 echo -e "${RED}无效的选择${NC}"
