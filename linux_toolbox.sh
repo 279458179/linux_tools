@@ -1,5 +1,4 @@
 #!/bin/bash
-set -x
 # Linux万能工具箱
 # 版本: 1.0.0
 # 作者: Your Name
