@@ -800,15 +800,37 @@ install_ollama() {
         return
     fi
     
+    # 检查NVIDIA GPU支持
+    gpu_support=false
+    if command -v nvidia-smi &>/dev/null; then
+        if nvidia-smi &>/dev/null; then
+            gpu_support=true
+            echo -e "${GREEN}检测到NVIDIA GPU，将启用GPU支持${NC}"
+        fi
+    fi
+    
     # 运行Ollama容器
     echo -e "${YELLOW}正在启动Ollama服务...${NC}"
-    docker run -d \
-        --name ollama \
-        --restart always \
-        -v /opt/ollama:/root/.ollama \
-        -p 11434:11434 \
-        --gpus all \
-        ollama/ollama:latest
+    if [ "$gpu_support" = true ]; then
+        # 使用GPU支持启动
+        docker run -d \
+            --name ollama \
+            --restart always \
+            -v /opt/ollama:/root/.ollama \
+            -p 11434:11434 \
+            --gpus all \
+            ollama/ollama:latest
+    else
+        # 不使用GPU启动
+        echo -e "${YELLOW}未检测到GPU支持，将使用CPU模式运行${NC}"
+        docker run -d \
+            --name ollama \
+            --restart always \
+            -v /opt/ollama:/root/.ollama \
+            -p 11434:11434 \
+            ollama/ollama:latest
+    fi
+    
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ollama服务启动失败${NC}"
         read -p "按回车键返回..."
@@ -831,6 +853,11 @@ install_ollama() {
         echo "3. 数据存储在 /opt/ollama 目录"
         echo "4. 使用以下命令拉取模型："
         echo "   docker exec -it ollama ollama pull llama2"
+        if [ "$gpu_support" = true ]; then
+            echo "5. 当前运行模式：GPU加速"
+        else
+            echo "5. 当前运行模式：CPU模式"
+        fi
     else
         echo -e "${RED}Ollama服务启动失败${NC}"
     fi
