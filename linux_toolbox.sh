@@ -98,8 +98,8 @@ show_welcome() {
 # 显示主菜单
 show_menu() {
     # 显示所有可用的功能选项
-    echo "1. 系统管理"
-    echo "2. SOCKS5代理连接"
+    echo "1. 系统管理合集"
+    echo "2. SOCKS5代理"
     echo "0. 退出"
     echo ""
     # 提示用户输入选择
