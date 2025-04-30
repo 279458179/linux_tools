@@ -25,15 +25,15 @@ check_root() {
 # 检查并安装Privoxy
 install_privoxy() {
     # 检查Privoxy是否已安装
-    if ! command -v privoxy &> /dev/null; then
+    if ! command -v privoxy &>/dev/null; then
         echo -e "${YELLOW}正在安装Privoxy...${NC}"
         # 根据不同的Linux发行版安装Privoxy
-        if command -v apt-get &> /dev/null; then
+        if command -v apt-get &>/dev/null; then
             apt-get update
             apt-get install -y privoxy
-        elif command -v yum &> /dev/null; then
+        elif command -v yum &>/dev/null; then
             yum install -y privoxy
-        elif command -v dnf &> /dev/null; then
+        elif command -v dnf &>/dev/null; then
             dnf install -y privoxy
         else
             echo -e "${RED}无法确定包管理器，请手动安装Privoxy${NC}"
@@ -46,14 +46,14 @@ install_privoxy() {
 configure_privoxy() {
     # 备份原始配置文件
     cp /etc/privoxy/config /etc/privoxy/config.bak
-    
+
     # 添加SOCKS5转发配置
-    echo "forward-socks5 / $local_ip:$local_port ." >> /etc/privoxy/config
-    
+    echo "forward-socks5 / $local_ip:$local_port ." >>/etc/privoxy/config
+
     # 重启Privoxy服务
     systemctl restart privoxy
     systemctl enable privoxy
-    
+
     # 检查服务状态
     if systemctl is-active --quiet privoxy; then
         echo -e "${GREEN}Privoxy服务已成功启动${NC}"
@@ -92,7 +92,7 @@ setup_socks5_proxy() {
     clear
     echo -e "${GREEN}SOCKS5代理连接设置${NC}"
     echo "----------------------------------------"
-    
+
     # 提示用户输入远程服务器信息
     while true; do
         read -p "请输入远程服务器IP地址: " remote_ip
@@ -103,7 +103,7 @@ setup_socks5_proxy() {
             echo -e "${RED}IP地址格式不正确，请重新输入${NC}"
         fi
     done
-    
+
     # 提示用户输入远程服务器端口
     while true; do
         read -p "请输入远程服务器端口: " remote_port
@@ -114,22 +114,22 @@ setup_socks5_proxy() {
             echo -e "${RED}端口号必须在1-65535之间，请重新输入${NC}"
         fi
     done
-    
+
     # 提示用户输入本地监听信息
     read -p "请输入本地监听IP地址 [默认127.0.0.1]: " local_ip
     read -p "请输入本地监听端口 [默认1080]: " local_port
     read -p "请输入远程服务器用户名: " username
-    
+
     # 设置默认值
     local_ip=${local_ip:-127.0.0.1}
     local_port=${local_port:-1080}
-    
+
     # 显示确认信息
     echo -e "\n${YELLOW}连接信息确认：${NC}"
     echo "远程服务器: $remote_ip:$remote_port"
     echo "本地监听: $local_ip:$local_port"
     echo "用户名: $username"
-    
+
     # 确认是否继续
     read -p "是否继续？(y/n): " confirm
     if [[ $confirm != "y" && $confirm != "Y" ]]; then
@@ -137,21 +137,21 @@ setup_socks5_proxy() {
         read -p "按回车键返回主菜单..."
         return
     fi
-    
+
     # 创建SSH隧道
     echo -e "${YELLOW}正在创建SSH隧道...${NC}"
     # 使用screen创建后台会话运行SSH隧道
     screen -dmS socks_proxy ssh -p $remote_port -D $local_ip:$local_port $username@$remote_ip
-    
+
     # 检查screen会话是否创建成功
     if screen -list | grep -q "socks_proxy"; then
         echo -e "${GREEN}SSH隧道创建成功！${NC}"
         echo "本地监听地址: $local_ip:$local_port"
-        
+
         # 安装和配置Privoxy
         install_privoxy
         configure_privoxy
-        
+
         echo -e "\n${GREEN}代理设置完成！${NC}"
         echo "SOCKS5代理地址: $local_ip:$local_port"
         echo "HTTP代理地址: 127.0.0.1:8118"
@@ -161,33 +161,42 @@ setup_socks5_proxy() {
     else
         echo -e "${RED}SSH隧道创建失败！${NC}"
     fi
-    
+
     # 等待用户确认
     read -p "按回车键返回主菜单..."
 }
 
-# 主循环
-while true; do
-    # 显示欢迎界面
-    show_welcome
-    # 显示主菜单
-    show_menu
+# 主函数
+main() {
+    # 检查root权限
+    check_root
     
-    # 根据用户选择执行相应功能
-    case $choice in
-        1) 
-            # 调用SOCKS5代理连接功能
-            setup_socks5_proxy
-            ;;
-        0) 
-            # 退出程序
-            echo -e "${GREEN}感谢使用！再见！${NC}"
-            exit 0
-            ;;
-        *)
-            # 处理无效输入
-            echo -e "${RED}无效选项，请重新选择${NC}"
-            sleep 1
-            ;;
-    esac
-done 
+    # 主循环
+    while true; do
+        # 显示欢迎界面
+        show_welcome
+        # 显示主菜单
+        show_menu
+        
+        # 根据用户选择执行相应功能
+        case $choice in
+            1) 
+                # 调用SOCKS5代理连接功能
+                setup_socks5_proxy
+                ;;
+            0) 
+                # 退出程序
+                echo -e "${GREEN}感谢使用！再见！${NC}"
+                exit 0
+                ;;
+            *)
+                # 处理无效输入
+                echo -e "${RED}无效选项，请重新选择${NC}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+# 执行主函数
+main
