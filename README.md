@@ -67,17 +67,6 @@
 - root权限
 - 网络连接
 
-## 安装方法
-```bash
-# 下载脚本
-curl -sL https://raw.githubusercontent.com/279458179/linux_tools/master/linux_toolbox.sh -o linux_toolbox.sh
-
-# 添加执行权限
-chmod +x linux_toolbox.sh
-
-# 运行脚本
-sudo ./linux_toolbox.sh
-```
 
 ## 使用说明
 1. 运行脚本后，会显示主菜单
