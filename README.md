@@ -14,7 +14,7 @@
 
 1. 克隆仓库：
 ```bash
-git clone https://github.com/yourusername/linux_tools.git
+git clone https://github.com/279458179/linux_tools.git
 cd linux_tools
 ```
 
