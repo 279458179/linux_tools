@@ -100,10 +100,11 @@ show_menu() {
     # 显示所有可用的功能选项
     echo "1. 系统管理合集"
     echo "2. SOCKS5代理"
+    echo "3. 安装Ollama"
     echo "0. 退出"
     echo ""
     # 提示用户输入选择
-    read -p "请输入选项 [0-2]: " choice
+    read -p "请输入选项 [0-3]: " choice
 }
 
 # 配置SSH密钥认证
@@ -739,6 +740,104 @@ system_management_menu() {
     done
 }
 
+# 安装Ollama
+install_ollama() {
+    clear
+    echo -e "${GREEN}安装Ollama${NC}"
+    echo "----------------------------------------"
+    
+    # 检查是否安装了Docker
+    if ! command -v docker &>/dev/null; then
+        echo -e "${YELLOW}正在安装Docker...${NC}"
+        # 安装Docker
+        curl -fsSL https://get.docker.com | sh
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Docker安装失败${NC}"
+            read -p "按回车键返回..."
+            return
+        fi
+        # 启动Docker服务
+        systemctl start docker
+        systemctl enable docker
+    fi
+    
+    # 检查Docker服务状态
+    if ! systemctl is-active --quiet docker; then
+        echo -e "${YELLOW}正在启动Docker服务...${NC}"
+        systemctl start docker
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Docker服务启动失败${NC}"
+            read -p "按回车键返回..."
+            return
+        fi
+    fi
+    
+    # 检查是否已经运行了Ollama容器
+    if docker ps | grep -q ollama; then
+        echo -e "${YELLOW}Ollama已经在运行中${NC}"
+        echo "容器信息："
+        docker ps | grep ollama
+        read -p "是否重新部署？(y/n): " redeploy
+        if [[ $redeploy != "y" && $redeploy != "Y" ]]; then
+            echo -e "${YELLOW}已取消操作${NC}"
+            read -p "按回车键返回..."
+            return
+        fi
+        # 停止并删除现有容器
+        docker stop ollama
+        docker rm ollama
+    fi
+    
+    # 创建Ollama数据目录
+    mkdir -p /opt/ollama
+    
+    # 拉取Ollama镜像
+    echo -e "${YELLOW}正在拉取Ollama镜像...${NC}"
+    docker pull ollama/ollama:latest
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ollama镜像拉取失败${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 运行Ollama容器
+    echo -e "${YELLOW}正在启动Ollama服务...${NC}"
+    docker run -d \
+        --name ollama \
+        --restart always \
+        -v /opt/ollama:/root/.ollama \
+        -p 11434:11434 \
+        --gpus all \
+        ollama/ollama:latest
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ollama服务启动失败${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 等待服务启动
+    echo -e "${YELLOW}等待服务启动...${NC}"
+    sleep 10
+    
+    # 检查服务状态
+    if docker ps | grep -q ollama; then
+        echo -e "${GREEN}Ollama安装成功！${NC}"
+        echo "服务信息："
+        docker ps | grep ollama
+        echo -e "\n${YELLOW}使用说明：${NC}"
+        echo "1. Ollama服务已启动在端口11434"
+        echo "2. 可以通过以下命令测试服务："
+        echo "   curl http://localhost:11434/api/tags"
+        echo "3. 数据存储在 /opt/ollama 目录"
+        echo "4. 使用以下命令拉取模型："
+        echo "   docker exec -it ollama ollama pull llama2"
+    else
+        echo -e "${RED}Ollama服务启动失败${NC}"
+    fi
+    
+    read -p "按回车键返回..."
+}
+
 # 主函数
 main() {
     # 检查root权限
@@ -760,6 +859,10 @@ main() {
             2) 
                 # 调用SOCKS5代理连接功能
                 setup_socks5_proxy
+                ;;
+            3)
+                # 调用安装Ollama功能
+                install_ollama
                 ;;
             0) 
                 # 退出程序
