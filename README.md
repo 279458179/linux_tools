@@ -21,9 +21,10 @@ cd linux_tools
 2. 添加执行权限：
 ```bash
 chmod +x linux_toolbox.sh
+./linux_toolbox.sh
 ```
 
-3. 运行工具：
+快速运行工具：
 ```bash
 bash <(curl -sL https://raw.githubusercontent.com/279458179/linux_tools/master/linux_toolbox.sh)
 ```
