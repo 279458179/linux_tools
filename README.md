@@ -25,7 +25,7 @@ chmod +x linux_toolbox.sh
 
 3. 运行工具：
 ```bash
-./linux_toolbox.sh
+bash <(curl -sL https://raw.githubusercontent.com/279458179/linux_tools/master/linux_toolbox.sh)
 ```
 
 ## 📋 功能列表
