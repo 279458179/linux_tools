@@ -11,6 +11,49 @@ YELLOW='\033[0;33m' # 黄色，用于警告信息
 BLUE='\033[0;34m'   # 蓝色，用于提示信息
 NC='\033[0m'        # 无颜色，用于重置颜色
 
+# 配置脚本别名
+setup_alias() {
+    # 获取脚本的绝对路径
+    SCRIPT_PATH=$(readlink -f "$0")
+    
+    # 确保脚本具有执行权限
+    if [ ! -x "$SCRIPT_PATH" ]; then
+        echo -e "${YELLOW}正在设置脚本执行权限...${NC}"
+        chmod +x "$SCRIPT_PATH"
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}设置执行权限失败，请手动执行：chmod +x $SCRIPT_PATH${NC}"
+            return 1
+        fi
+        echo -e "${GREEN}已设置脚本执行权限${NC}"
+    fi
+    
+    # 获取用户的shell类型
+    USER_SHELL=$(basename "$SHELL")
+    
+    # 根据不同的shell类型选择配置文件
+    case $USER_SHELL in
+        "bash")
+            SHELL_RC="$HOME/.bashrc"
+            ;;
+        "zsh")
+            SHELL_RC="$HOME/.zshrc"
+            ;;
+        *)
+            echo -e "${YELLOW}未识别的shell类型，将使用.bashrc${NC}"
+            SHELL_RC="$HOME/.bashrc"
+            ;;
+    esac
+    
+    # 检查别名是否已存在
+    if ! grep -q "alias i='$SCRIPT_PATH'" "$SHELL_RC"; then
+        # 添加别名配置
+        echo -e "\n# Linux工具箱快捷命令" >> "$SHELL_RC"
+        echo "alias i='$SCRIPT_PATH'" >> "$SHELL_RC"
+        echo -e "${GREEN}已添加快捷命令 'i'${NC}"
+        echo -e "${YELLOW}请执行 'source $SHELL_RC' 或重新登录以使配置生效${NC}"
+    fi
+}
+
 # 检查是否以root权限运行
 check_root() {
     # 检查当前用户是否为root
@@ -1270,6 +1313,9 @@ install_ollama() {
 main() {
     # 检查root权限
     check_root
+    
+    # 配置别名
+    setup_alias
     
     # 主循环
     while true; do
