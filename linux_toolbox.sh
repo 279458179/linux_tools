@@ -142,7 +142,7 @@ show_welcome() {
 show_menu() {
     # 显示所有可用的功能选项
     echo "1. 系统管理合集"
-    echo "2. SOCKS5代理"
+    echo "2. 安装Hysteria2客户端"
     echo "3. 安装Ollama"
     echo "0. 退出"
     echo ""
@@ -169,203 +169,6 @@ setup_ssh_key() {
     echo "您可以通过以下命令添加："
     echo "echo '$(cat ~/.ssh/id_rsa.pub)' >> ~/.ssh/authorized_keys"
     read -p "添加完成后按回车继续..."
-}
-
-# SOCKS5代理连接功能
-setup_socks5_proxy() {
-    # 清屏
-    clear
-    echo -e "${GREEN}SOCKS5代理连接设置${NC}"
-    echo "----------------------------------------"
-    
-    # 检查并安装screen
-    if ! command -v screen &>/dev/null; then
-        echo -e "${YELLOW}正在安装screen工具...${NC}"
-        if command -v apt-get &>/dev/null; then
-            apt-get update
-            apt-get install -y screen
-            # 重新加载环境变量
-            hash -r
-            # 验证screen是否可用
-            if ! command -v screen &>/dev/null; then
-                echo -e "${RED}screen安装失败，请手动安装后重试${NC}"
-                read -p "按回车键返回主菜单..."
-                return
-            fi
-        elif command -v yum &>/dev/null; then
-            yum install -y screen
-            # 重新加载环境变量
-            hash -r
-            # 验证screen是否可用
-            if ! command -v screen &>/dev/null; then
-                echo -e "${RED}screen安装失败，请手动安装后重试${NC}"
-                read -p "按回车键返回主菜单..."
-                return
-            fi
-        elif command -v dnf &>/dev/null; then
-            dnf install -y screen
-            # 重新加载环境变量
-            hash -r
-            # 验证screen是否可用
-            if ! command -v screen &>/dev/null; then
-                echo -e "${RED}screen安装失败，请手动安装后重试${NC}"
-                read -p "按回车键返回主菜单..."
-                return
-            fi
-        else
-            echo -e "${RED}无法安装screen工具，请手动安装${NC}"
-            read -p "按回车键返回主菜单..."
-            return
-        fi
-        echo -e "${GREEN}screen工具安装成功${NC}"
-    fi
-    
-    # 提示用户输入远程服务器信息
-    while true; do
-        read -p "请输入远程服务器IP地址: " remote_ip
-        # 验证IP地址格式
-        if [[ $remote_ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            break
-        else
-            echo -e "${RED}IP地址格式不正确，请重新输入${NC}"
-        fi
-    done
-    
-    # 提示用户输入远程服务器端口
-    while true; do
-        read -p "请输入远程服务器端口: " remote_port
-        # 验证端口号是否在有效范围内
-        if [[ $remote_port =~ ^[0-9]+$ ]] && [ $remote_port -ge 1 ] && [ $remote_port -le 65535 ]; then
-            break
-        else
-            echo -e "${RED}端口号必须在1-65535之间，请重新输入${NC}"
-        fi
-    done
-    
-    # 提示用户输入本地监听信息
-    read -p "请输入本地监听IP地址 [默认127.0.0.1]: " local_ip
-    read -p "请输入本地监听端口 [默认1080]: " local_port
-    read -p "请输入远程服务器用户名: " username
-    read -s -p "请输入远程服务器密码: " password
-    echo ""  # 换行
-    
-    # 设置默认值
-    local_ip=${local_ip:-127.0.0.1}
-    local_port=${local_port:-1080}
-    
-    # 显示确认信息
-    echo -e "\n${YELLOW}连接信息确认：${NC}"
-    echo "远程服务器: $remote_ip:$remote_port"
-    echo "本地监听: $local_ip:$local_port"
-    echo "用户名: $username"
-    
-    # 确认是否继续
-    read -p "是否继续？(y/n): " confirm
-    if [[ $confirm != "y" && $confirm != "Y" ]]; then
-        echo -e "${YELLOW}已取消操作${NC}"
-        read -p "按回车键返回主菜单..."
-        return
-    fi
-    
-    # 安装sshpass
-    install_sshpass
-    
-    # 测试SSH连接
-    echo -e "${YELLOW}正在测试SSH连接...${NC}"
-    if ! sshpass -p "$password" ssh -p $remote_port -o ConnectTimeout=5 $username@$remote_ip "echo 'SSH连接测试成功'"; then
-        echo -e "${RED}SSH连接测试失败，请检查用户名、密码或服务器状态${NC}"
-        read -p "按回车键返回主菜单..."
-        return
-    fi
-    
-    # 创建SSH隧道
-    echo -e "${YELLOW}正在创建SSH隧道...${NC}"
-    # 使用screen创建后台会话运行SSH隧道，使用sshpass自动输入密码
-    if ! screen -dmS socks_proxy sshpass -p "$password" ssh -v -p $remote_port -D $local_ip:$local_port $username@$remote_ip; then
-        echo -e "${RED}SSH隧道创建失败！${NC}"
-        echo -e "${YELLOW}尝试使用替代方法创建隧道...${NC}"
-        # 尝试使用nohup作为备选方案
-        nohup sshpass -p "$password" ssh -p $remote_port -D $local_ip:$local_port $username@$remote_ip > /dev/null 2>&1 &
-        TUNNEL_PID=$!
-        # 等待一小段时间检查进程是否成功启动
-        sleep 2
-        if ps -p $TUNNEL_PID > /dev/null; then
-            echo -e "${GREEN}使用nohup成功创建SSH隧道！${NC}"
-            # 保存进程ID以便后续管理
-            echo $TUNNEL_PID > /tmp/socks_proxy.pid
-        else
-            echo -e "${RED}所有隧道创建方法都失败了${NC}"
-            read -p "按回车键返回主菜单..."
-            return
-        fi
-    else
-        echo -e "${GREEN}SSH隧道创建成功！${NC}"
-    fi
-    
-    # 等待几秒钟让连接建立
-    sleep 3
-    
-    # 检查隧道是否成功创建
-    if [ -f /tmp/socks_proxy.pid ]; then
-        # 检查nohup创建的进程
-        if ps -p $(cat /tmp/socks_proxy.pid) > /dev/null; then
-            echo -e "${GREEN}SSH隧道正在运行${NC}"
-        else
-            echo -e "${RED}SSH隧道进程已停止${NC}"
-            read -p "按回车键返回主菜单..."
-            return
-        fi
-    elif screen -list | grep -q "socks_proxy"; then
-        echo -e "${GREEN}SSH隧道正在运行${NC}"
-    else
-        echo -e "${RED}SSH隧道创建失败！${NC}"
-        read -p "按回车键返回主菜单..."
-        return
-    fi
-    
-    # 安装和配置Privoxy
-    install_privoxy
-    
-    # 配置Privoxy
-    echo -e "${YELLOW}正在配置Privoxy...${NC}"
-    # 备份原始配置文件
-    cp /etc/privoxy/config /etc/privoxy/config.bak
-    
-    # 添加SOCKS5转发配置
-    echo "forward-socks5 / $local_ip:$local_port ." >>/etc/privoxy/config
-    
-    # 重启Privoxy服务
-    systemctl restart privoxy
-    systemctl enable privoxy
-    
-    # 检查服务状态
-    if systemctl is-active --quiet privoxy; then
-        echo -e "${GREEN}Privoxy服务已成功启动${NC}"
-        echo "HTTP代理地址: 127.0.0.1:8118"
-        
-        # 测试代理连接
-        echo -e "${YELLOW}正在测试代理连接...${NC}"
-        if curl -x http://127.0.0.1:8118 http://www.google.com &>/dev/null; then
-            echo -e "${GREEN}代理连接测试成功！${NC}"
-        else
-            echo -e "${RED}代理连接测试失败，请检查配置${NC}"
-        fi
-        
-        echo -e "\n${GREEN}代理设置完成！${NC}"
-        echo "SOCKS5代理地址: $local_ip:$local_port"
-        echo "HTTP代理地址: 127.0.0.1:8118"
-        echo -e "\n${YELLOW}使用说明：${NC}"
-        echo "1. 在浏览器中设置HTTP代理为 127.0.0.1:8118"
-        echo "2. 或在系统网络设置中配置HTTP代理"
-    else
-        echo -e "${RED}Privoxy服务启动失败${NC}"
-    fi
-    
-    # 清除密码变量
-    unset password
-    
-    # 等待用户确认
-    read -p "按回车键返回主菜单..."
 }
 
 # 显示系统信息
@@ -1309,6 +1112,107 @@ install_ollama() {
     read -p "按回车键返回..."
 }
 
+# 安装Hysteria2客户端
+setup_hysteria2_client() {
+    clear
+    echo -e "${GREEN}安装Hysteria2客户端${NC}"
+    echo "----------------------------------------"
+    
+    # 提示用户输入Hysteria2链接
+    read -p "请输入Hysteria2连接链接: " hysteria_link
+    
+    # 检查链接格式
+    if [[ ! $hysteria_link =~ ^hysteria2:// ]]; then
+        echo -e "${RED}无效的Hysteria2链接格式${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 使用官方一键脚本安装（自动选用国内源）
+    echo -e "${YELLOW}正在使用官方一键脚本安装Hysteria2客户端...${NC}"
+    bash <(curl -fsSL https://get.hy2.sh/)
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Hysteria2客户端自动安装失败，请检查网络或手动安装${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 查找hysteria2可执行文件路径
+    if [ -f /usr/local/bin/hysteria ]; then
+        HYSTERIA_BIN="/usr/local/bin/hysteria"
+    elif [ -f /usr/bin/hysteria ]; then
+        HYSTERIA_BIN="/usr/bin/hysteria"
+    else
+        echo -e "${RED}未找到hysteria2可执行文件，请检查安装${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    mkdir -p /etc/hysteria2
+    
+    # 解析链接
+    PASSWORD=$(echo $hysteria_link | sed -n 's/.*:\/\/\([^@]*\)@.*/\1/p')
+    SERVER=$(echo $hysteria_link | sed -n 's/.*@\([^:]*\):.*/\1/p')
+    PORT=$(echo $hysteria_link | sed -n 's/.*:\([0-9]*\).*/\1/p')
+    SNI=$(echo $hysteria_link | sed -n 's/.*sni=\([^&]*\).*/\1/p')
+    
+    # 创建配置文件
+    cat > /etc/hysteria2/config.yaml << EOF
+server: $SERVER:$PORT
+auth: $PASSWORD
+tls:
+  sni: $SNI
+  insecure: false
+  alpn: [h3]
+socks5:
+  listen: 127.0.0.1:1080
+http:
+  listen: 127.0.0.1:8080
+EOF
+    
+    # 创建systemd服务文件
+    cat > /etc/systemd/system/hysteria2.service << EOF
+[Unit]
+Description=Hysteria2 Client Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=$HYSTERIA_BIN -c /etc/hysteria2/config.yaml
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    # 重新加载systemd配置
+    systemctl daemon-reload
+    
+    # 启动Hysteria2服务
+    echo -e "${YELLOW}正在启动Hysteria2服务...${NC}"
+    systemctl enable hysteria2
+    systemctl restart hysteria2
+    
+    # 检查服务状态
+    if systemctl is-active --quiet hysteria2; then
+        echo -e "${GREEN}Hysteria2服务已成功启动${NC}"
+        echo -e "\n${YELLOW}代理信息：${NC}"
+        echo "SOCKS5代理: 127.0.0.1:1080"
+        echo "HTTP代理: 127.0.0.1:8080"
+        echo -e "\n${YELLOW}使用说明：${NC}"
+        echo "1. 在浏览器中设置HTTP代理为 127.0.0.1:8080"
+        echo "2. 或在系统网络设置中配置HTTP代理"
+        echo "3. 如需停止服务，请运行: systemctl stop hysteria2"
+        echo "4. 如需查看服务状态，请运行: systemctl status hysteria2"
+    else
+        echo -e "${RED}Hysteria2服务启动失败${NC}"
+        echo "请检查配置和日志: journalctl -u hysteria2"
+    fi
+    
+    read -p "按回车键返回..."
+}
+
 # 主函数
 main() {
     # 检查root权限
@@ -1331,8 +1235,8 @@ main() {
                 system_management_menu
                 ;;
             2) 
-                # 调用SOCKS5代理连接功能
-                setup_socks5_proxy
+                # 调用安装Hysteria2客户端功能
+                setup_hysteria2_client
                 ;;
             3)
                 # 调用安装Ollama功能
