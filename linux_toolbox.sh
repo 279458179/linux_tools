@@ -242,10 +242,14 @@ setup_socks5_proxy() {
         echo -e "${RED}SSH隧道创建失败！${NC}"
         echo -e "${YELLOW}尝试使用替代方法创建隧道...${NC}"
         # 尝试使用nohup作为备选方案
-        if nohup sshpass -p "$password" ssh -p $remote_port -D $local_ip:$local_port $username@$remote_ip > /dev/null 2>&1 &; then
+        nohup sshpass -p "$password" ssh -p $remote_port -D $local_ip:$local_port $username@$remote_ip > /dev/null 2>&1 &
+        TUNNEL_PID=$!
+        # 等待一小段时间检查进程是否成功启动
+        sleep 2
+        if ps -p $TUNNEL_PID > /dev/null; then
             echo -e "${GREEN}使用nohup成功创建SSH隧道！${NC}"
             # 保存进程ID以便后续管理
-            echo $! > /tmp/socks_proxy.pid
+            echo $TUNNEL_PID > /tmp/socks_proxy.pid
         else
             echo -e "${RED}所有隧道创建方法都失败了${NC}"
             read -p "按回车键返回主菜单..."
