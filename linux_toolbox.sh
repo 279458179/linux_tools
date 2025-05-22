@@ -135,6 +135,23 @@ setup_socks5_proxy() {
     echo -e "${GREEN}SOCKS5代理连接设置${NC}"
     echo "----------------------------------------"
     
+    # 检查并安装screen
+    if ! command -v screen &>/dev/null; then
+        echo -e "${YELLOW}正在安装screen工具...${NC}"
+        if command -v apt-get &>/dev/null; then
+            apt-get update
+            apt-get install -y screen
+        elif command -v yum &>/dev/null; then
+            yum install -y screen
+        elif command -v dnf &>/dev/null; then
+            dnf install -y screen
+        else
+            echo -e "${RED}无法安装screen工具，请手动安装${NC}"
+            read -p "按回车键返回主菜单..."
+            return
+        fi
+    fi
+    
     # 提示用户输入远程服务器信息
     while true; do
         read -p "请输入远程服务器IP地址: " remote_ip
