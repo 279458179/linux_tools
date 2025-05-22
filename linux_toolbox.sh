@@ -141,15 +141,40 @@ setup_socks5_proxy() {
         if command -v apt-get &>/dev/null; then
             apt-get update
             apt-get install -y screen
+            # 重新加载环境变量
+            hash -r
+            # 验证screen是否可用
+            if ! command -v screen &>/dev/null; then
+                echo -e "${RED}screen安装失败，请手动安装后重试${NC}"
+                read -p "按回车键返回主菜单..."
+                return
+            fi
         elif command -v yum &>/dev/null; then
             yum install -y screen
+            # 重新加载环境变量
+            hash -r
+            # 验证screen是否可用
+            if ! command -v screen &>/dev/null; then
+                echo -e "${RED}screen安装失败，请手动安装后重试${NC}"
+                read -p "按回车键返回主菜单..."
+                return
+            fi
         elif command -v dnf &>/dev/null; then
             dnf install -y screen
+            # 重新加载环境变量
+            hash -r
+            # 验证screen是否可用
+            if ! command -v screen &>/dev/null; then
+                echo -e "${RED}screen安装失败，请手动安装后重试${NC}"
+                read -p "按回车键返回主菜单..."
+                return
+            fi
         else
             echo -e "${RED}无法安装screen工具，请手动安装${NC}"
             read -p "按回车键返回主菜单..."
             return
         fi
+        echo -e "${GREEN}screen工具安装成功${NC}"
     fi
     
     # 提示用户输入远程服务器信息
@@ -213,55 +238,80 @@ setup_socks5_proxy() {
     # 创建SSH隧道
     echo -e "${YELLOW}正在创建SSH隧道...${NC}"
     # 使用screen创建后台会话运行SSH隧道，使用sshpass自动输入密码
-    screen -dmS socks_proxy sshpass -p "$password" ssh -v -p $remote_port -D $local_ip:$local_port $username@$remote_ip
+    if ! screen -dmS socks_proxy sshpass -p "$password" ssh -v -p $remote_port -D $local_ip:$local_port $username@$remote_ip; then
+        echo -e "${RED}SSH隧道创建失败！${NC}"
+        echo -e "${YELLOW}尝试使用替代方法创建隧道...${NC}"
+        # 尝试使用nohup作为备选方案
+        if nohup sshpass -p "$password" ssh -p $remote_port -D $local_ip:$local_port $username@$remote_ip > /dev/null 2>&1 &; then
+            echo -e "${GREEN}使用nohup成功创建SSH隧道！${NC}"
+            # 保存进程ID以便后续管理
+            echo $! > /tmp/socks_proxy.pid
+        else
+            echo -e "${RED}所有隧道创建方法都失败了${NC}"
+            read -p "按回车键返回主菜单..."
+            return
+        fi
+    else
+        echo -e "${GREEN}SSH隧道创建成功！${NC}"
+    fi
     
     # 等待几秒钟让连接建立
     sleep 3
     
-    # 检查screen会话是否创建成功
-    if screen -list | grep -q "socks_proxy"; then
-        echo -e "${GREEN}SSH隧道创建成功！${NC}"
-        echo "本地监听地址: $local_ip:$local_port"
-        
-        # 安装和配置Privoxy
-        install_privoxy
-        
-        # 配置Privoxy
-        echo -e "${YELLOW}正在配置Privoxy...${NC}"
-        # 备份原始配置文件
-        cp /etc/privoxy/config /etc/privoxy/config.bak
-        
-        # 添加SOCKS5转发配置
-        echo "forward-socks5 / $local_ip:$local_port ." >>/etc/privoxy/config
-        
-        # 重启Privoxy服务
-        systemctl restart privoxy
-        systemctl enable privoxy
-        
-        # 检查服务状态
-        if systemctl is-active --quiet privoxy; then
-            echo -e "${GREEN}Privoxy服务已成功启动${NC}"
-            echo "HTTP代理地址: 127.0.0.1:8118"
-            
-            # 测试代理连接
-            echo -e "${YELLOW}正在测试代理连接...${NC}"
-            if curl -x http://127.0.0.1:8118 http://www.google.com &>/dev/null; then
-                echo -e "${GREEN}代理连接测试成功！${NC}"
-            else
-                echo -e "${RED}代理连接测试失败，请检查配置${NC}"
-            fi
-            
-            echo -e "\n${GREEN}代理设置完成！${NC}"
-            echo "SOCKS5代理地址: $local_ip:$local_port"
-            echo "HTTP代理地址: 127.0.0.1:8118"
-            echo -e "\n${YELLOW}使用说明：${NC}"
-            echo "1. 在浏览器中设置HTTP代理为 127.0.0.1:8118"
-            echo "2. 或在系统网络设置中配置HTTP代理"
+    # 检查隧道是否成功创建
+    if [ -f /tmp/socks_proxy.pid ]; then
+        # 检查nohup创建的进程
+        if ps -p $(cat /tmp/socks_proxy.pid) > /dev/null; then
+            echo -e "${GREEN}SSH隧道正在运行${NC}"
         else
-            echo -e "${RED}Privoxy服务启动失败${NC}"
+            echo -e "${RED}SSH隧道进程已停止${NC}"
+            read -p "按回车键返回主菜单..."
+            return
         fi
+    elif screen -list | grep -q "socks_proxy"; then
+        echo -e "${GREEN}SSH隧道正在运行${NC}"
     else
         echo -e "${RED}SSH隧道创建失败！${NC}"
+        read -p "按回车键返回主菜单..."
+        return
+    fi
+    
+    # 安装和配置Privoxy
+    install_privoxy
+    
+    # 配置Privoxy
+    echo -e "${YELLOW}正在配置Privoxy...${NC}"
+    # 备份原始配置文件
+    cp /etc/privoxy/config /etc/privoxy/config.bak
+    
+    # 添加SOCKS5转发配置
+    echo "forward-socks5 / $local_ip:$local_port ." >>/etc/privoxy/config
+    
+    # 重启Privoxy服务
+    systemctl restart privoxy
+    systemctl enable privoxy
+    
+    # 检查服务状态
+    if systemctl is-active --quiet privoxy; then
+        echo -e "${GREEN}Privoxy服务已成功启动${NC}"
+        echo "HTTP代理地址: 127.0.0.1:8118"
+        
+        # 测试代理连接
+        echo -e "${YELLOW}正在测试代理连接...${NC}"
+        if curl -x http://127.0.0.1:8118 http://www.google.com &>/dev/null; then
+            echo -e "${GREEN}代理连接测试成功！${NC}"
+        else
+            echo -e "${RED}代理连接测试失败，请检查配置${NC}"
+        fi
+        
+        echo -e "\n${GREEN}代理设置完成！${NC}"
+        echo "SOCKS5代理地址: $local_ip:$local_port"
+        echo "HTTP代理地址: 127.0.0.1:8118"
+        echo -e "\n${YELLOW}使用说明：${NC}"
+        echo "1. 在浏览器中设置HTTP代理为 127.0.0.1:8118"
+        echo "2. 或在系统网络设置中配置HTTP代理"
+    else
+        echo -e "${RED}Privoxy服务启动失败${NC}"
     fi
     
     # 清除密码变量
