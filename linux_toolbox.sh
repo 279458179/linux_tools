@@ -719,9 +719,15 @@ system_management_menu() {
         echo "5. 修改本地DNS"
         echo "6. 在线挂载磁盘"
         echo "7. 在线扩容磁盘"
+        echo "8. 配置YUM/APT源"
+        echo "9. 安装Docker"
+        echo "10. 配置SSH互信"
+        echo "11. 部署VSFTPD服务"
+        echo "12. 磁盘挂载LVM"
+        echo "13. 编译安装Python3.12"
         echo "0. 返回主菜单"
         echo "----------------------------------------"
-        read -p "请选择操作 [0-7]: " choice
+        read -p "请选择操作 [0-13]: " choice
         
         case $choice in
             1) show_system_info ;;
@@ -731,6 +737,12 @@ system_management_menu() {
             5) configure_dns ;;
             6) mount_disk ;;
             7) resize_disk ;;
+            8) configure_source ;;
+            9) install_docker ;;
+            10) configure_ssh_trust ;;
+            11) deploy_vsftpd ;;
+            12) lvm_partition_and_mount ;;
+            13) install_python3_12 ;;
             0) return ;;
             *)
                 echo -e "${RED}无效的选择${NC}"
@@ -738,6 +750,321 @@ system_management_menu() {
                 ;;
         esac
     done
+}
+
+# 检测操作系统类型
+detect_os() {
+    if grep -q "AlmaLinux" /etc/os-release; then
+        OS="AlmaLinux"
+    elif grep -q "CentOS" /etc/os-release; then
+        OS="CentOS"
+    elif grep -q "Ubuntu" /etc/os-release; then
+        OS="Ubuntu"
+    else
+        echo "Unsupported OS."
+        exit 1
+    fi
+}
+
+# 配置YUM或APT源
+configure_source() {
+    clear
+    echo -e "${GREEN}配置YUM/APT源${NC}"
+    echo "----------------------------------------"
+    
+    # 检测操作系统类型
+    detect_os
+    
+    echo "正在配置软件源..."
+    if [ "$OS" == "CentOS" ]; then
+        # CentOS YUM源配置为阿里云镜像源
+        echo "正在配置CentOS YUM源..."
+        sudo mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak
+        sudo curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-7.repo
+        sudo yum clean all && sudo yum makecache
+        echo -e "${GREEN}CentOS YUM源配置完成${NC}"
+        
+    elif [ "$OS" == "AlmaLinux" ]; then
+        # AlmaLinux 8 YUM源配置为阿里云镜像源
+        echo "正在配置AlmaLinux YUM源..."
+        sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+            -e 's|^# baseurl=https://repo.almalinux.org|baseurl=https://mirrors.aliyun.com|g' \
+            -i.bak \
+            /etc/yum.repos.d/almalinux*.repo
+        dnf makecache
+        echo -e "${GREEN}AlmaLinux YUM源配置完成${NC}"
+        
+    elif [ "$OS" == "Ubuntu" ]; then
+        # Ubuntu APT源配置为阿里云镜像源
+        echo "正在配置Ubuntu APT源..."
+        sudo mv /etc/apt/sources.list /etc/apt/sources.list.bak
+        sudo bash -c 'cat > /etc/apt/sources.list <<EOF
+deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -sc) main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -sc)-security main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -sc)-updates main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -sc)-proposed main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -sc)-backports main restricted universe multiverse
+EOF'
+        sudo apt update
+        echo -e "${GREEN}Ubuntu APT源配置完成${NC}"
+    fi
+    
+    read -p "按回车键返回..."
+}
+
+# 安装Docker
+install_docker() {
+    clear
+    echo -e "${GREEN}安装Docker${NC}"
+    echo "----------------------------------------"
+    
+    # 检测操作系统类型
+    detect_os
+    
+    echo "正在安装Docker..."
+    if [ "$OS" == "CentOS" ]; then
+        # CentOS 的 Docker 安装步骤
+        sudo yum install -y yum-utils
+        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        sudo yum install -y docker-ce docker-ce-cli containerd.io
+        echo -e "${GREEN}Docker已安装在CentOS上${NC}"
+        
+    elif [ "$OS" == "AlmaLinux" ]; then
+        # AlmaLinux 的 Docker 安装步骤
+        sudo dnf install -y dnf-utils
+        sudo dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+        sudo dnf install -y docker-ce docker-ce-cli containerd.io
+        echo -e "${GREEN}Docker已安装在AlmaLinux上${NC}"
+        
+    elif [ "$OS" == "Ubuntu" ]; then
+        # Ubuntu 的 Docker 安装步骤
+        sudo apt update
+        sudo apt install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+        sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        sudo apt update
+        sudo apt install -y docker-ce docker-ce-cli containerd.io
+        echo -e "${GREEN}Docker已安装在Ubuntu上${NC}"
+    fi
+    
+    # 启动并设置 Docker 开机自启
+    sudo systemctl enable docker
+    sudo systemctl start docker
+    
+    # 验证安装
+    if docker --version &>/dev/null; then
+        echo -e "${GREEN}Docker安装成功！${NC}"
+        docker --version
+    else
+        echo -e "${RED}Docker安装失败${NC}"
+    fi
+    
+    read -p "按回车键返回..."
+}
+
+# 配置SSH互信
+configure_ssh_trust() {
+    clear
+    echo -e "${GREEN}配置SSH互信${NC}"
+    echo "----------------------------------------"
+    
+    # 检查本地是否已经生成了 SSH 密钥
+    if [ ! -f ~/.ssh/id_rsa ]; then
+        echo "正在生成SSH密钥..."
+        ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N ""
+    else
+        echo "SSH密钥已存在"
+    fi
+    
+    # 提示用户输入目标机器的 IP 地址
+    read -p "请输入目标机器的IP地址: " target_ip
+    
+    # 将 SSH 公钥拷贝到目标机器
+    ssh-copy-id -i ~/.ssh/id_rsa.pub "$USER@$target_ip"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}SSH互信配置成功！${NC}"
+    else
+        echo -e "${RED}SSH互信配置失败${NC}"
+    fi
+    
+    read -p "按回车键返回..."
+}
+
+# 部署VSFTPD服务
+deploy_vsftpd() {
+    clear
+    echo -e "${GREEN}部署VSFTPD服务${NC}"
+    echo "----------------------------------------"
+    
+    # 检测操作系统类型
+    detect_os
+    
+    echo "正在部署vsftpd服务..."
+    if [ "$OS" == "CentOS" ] || [ "$OS" == "AlmaLinux" ]; then
+        sudo yum install -y vsftpd
+    elif [ "$OS" == "Ubuntu" ]; then
+        sudo apt update
+        sudo apt install -y vsftpd
+    fi
+    
+    # 启动并设置 vsftpd 开机自启
+    sudo systemctl start vsftpd
+    sudo systemctl enable vsftpd
+    
+    # 配置 vsftpd
+    sudo sed -i 's/anonymous_enable=YES/anonymous_enable=NO/' /etc/vsftpd/vsftpd.conf
+    sudo sed -i 's/#local_enable=YES/local_enable=YES/' /etc/vsftpd/vsftpd.conf
+    sudo sed -i 's/#write_enable=YES/write_enable=YES/' /etc/vsftpd/vsftpd.conf
+    sudo sed -i 's/listen=NO/listen=YES/' /etc/vsftpd/vsftpd.conf
+    sudo sed -i 's/listen_ipv6=YES/listen_ipv6=NO/' /etc/vsftpd/vsftpd.conf
+    
+    # 配置被动模式和指定端口范围
+    echo "pasv_enable=YES" | sudo tee -a /etc/vsftpd/vsftpd.conf
+    echo "pasv_min_port=30000" | sudo tee -a /etc/vsftpd/vsftpd.conf
+    echo "pasv_max_port=31000" | sudo tee -a /etc/vsftpd/vsftpd.conf
+    echo "pasv_address=$(ip a |grep "inet " |grep brd |awk '{print $2}' |cut -d / -f 1)" | sudo tee -a /etc/vsftpd/vsftpd.conf
+    
+    # 配置 vsftpd 使用 22001 端口
+    echo "listen_port=22001" | sudo tee -a /etc/vsftpd/vsftpd.conf
+    
+    # 创建并配置 ftpuser 用户
+    if ! id "ftpuser" &>/dev/null; then
+        sudo useradd -m -d /home/ftpuser ftpuser
+        echo "ftpuser:ftpuser" | sudo chpasswd
+        echo "已创建ftpuser用户"
+    fi
+    
+    # 设置用户家目录权限
+    sudo chown ftpuser:ftpuser /home/ftpuser
+    
+    # 配置 vsftpd 允许用户登录
+    echo "userlist_enable=YES" | sudo tee -a /etc/vsftpd/vsftpd.conf
+    echo "userlist_deny=NO" | sudo tee -a /etc/vsftpd/vsftpd.conf
+    echo "ftpuser" | sudo tee -a /etc/vsftpd/user_list
+    
+    # 重启 vsftpd
+    sudo systemctl restart vsftpd
+    
+    echo -e "${GREEN}VSFTPD服务部署完成！${NC}"
+    echo "FTP服务器信息："
+    echo "地址: $(hostname -I | awk '{print $1}')"
+    echo "端口: 22001"
+    echo "用户名: ftpuser"
+    echo "密码: ftpuser"
+    
+    read -p "按回车键返回..."
+}
+
+# 磁盘挂载LVM
+lvm_partition_and_mount() {
+    clear
+    echo -e "${GREEN}磁盘挂载LVM${NC}"
+    echo "----------------------------------------"
+    
+    # 提示用户输入磁盘名称和挂载点
+    read -p "请输入要分区的磁盘（例如：/dev/sdb）: " disk
+    read -p "请输入挂载点目录（例如：/mnt/data）: " mount_point
+    
+    # 检查磁盘是否存在
+    if [ ! -b "$disk" ]; then
+        echo -e "${RED}磁盘 $disk 不存在${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 创建物理卷 (PV)
+    echo "正在创建物理卷..."
+    sudo pvcreate "$disk"
+    
+    # 创建卷组 (VG)
+    echo "正在创建卷组 lvm_vg..."
+    sudo vgcreate lvm_vg "$disk"
+    
+    # 创建逻辑卷 (LV)
+    echo "正在创建逻辑卷 lvm_lv..."
+    sudo lvcreate -l 100%FREE -n lvm_lv lvm_vg
+    
+    # 格式化逻辑卷
+    echo "正在格式化逻辑卷为ext4..."
+    sudo mkfs.ext4 /dev/lvm_vg/lvm_lv
+    
+    # 创建挂载点目录
+    if [ ! -d "$mount_point" ]; then
+        sudo mkdir -p "$mount_point"
+    fi
+    
+    # 挂载逻辑卷
+    echo "正在挂载逻辑卷..."
+    sudo mount /dev/lvm_vg/lvm_lv "$mount_point"
+    
+    # 添加到 /etc/fstab
+    UUID=$(sudo blkid -s UUID -o value /dev/lvm_vg/lvm_lv)
+    echo "UUID=$UUID $mount_point ext4 defaults 0 0" | sudo tee -a /etc/fstab
+    
+    echo -e "${GREEN}磁盘挂载LVM完成！${NC}"
+    echo "挂载信息："
+    df -h "$mount_point"
+    
+    read -p "按回车键返回..."
+}
+
+# 安装Python3.12
+install_python3_12() {
+    clear
+    echo -e "${GREEN}安装Python 3.12${NC}"
+    echo "----------------------------------------"
+    
+    # 检测操作系统类型
+    detect_os
+    
+    echo "正在安装Python 3.12..."
+    if [ "$OS" == "CentOS" ] || [ "$OS" == "AlmaLinux" ]; then
+        # 启用 EPEL 和 CRB 源
+        sudo yum install -y epel-release
+        sudo yum config-manager --set-enabled crb
+        
+        # 安装依赖包
+        sudo yum install -y gcc make wget openssl-devel bzip2-devel libffi-devel zlib-devel
+        
+        # 下载并编译 Python 3.12
+        cd /usr/src
+        sudo wget https://www.python.org/ftp/python/3.12.0/Python-3.12.0.tgz
+        sudo tar xzf Python-3.12.0.tgz
+        cd Python-3.12.0
+        sudo ./configure --enable-optimizations
+        sudo make altinstall
+        
+        # 配置 Python 3.12 环境变量
+        sudo ln -sf /usr/local/bin/python3.12 /usr/bin/python3
+        sudo ln -sf /usr/local/bin/pip3.12 /usr/bin/pip3
+        
+    elif [ "$OS" == "Ubuntu" ]; then
+        # 更新包管理器
+        sudo apt update
+        
+        # 安装依赖
+        sudo apt install -y software-properties-common build-essential libssl-dev zlib1g-dev libncurses5-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+        
+        # 添加 Python 3.12 PPA 源并安装
+        sudo add-apt-repository ppa:deadsnakes/ppa
+        sudo apt update
+        sudo apt install -y python3.12 python3.12-dev python3.12-venv python3.12-distutils
+        
+        # 配置 Python 3.12 环境变量
+        sudo ln -sf /usr/bin/python3.12 /usr/bin/python3
+        sudo ln -sf /usr/bin/pip3.12 /usr/bin/pip3
+    fi
+    
+    # 验证安装
+    if python3 --version &>/dev/null; then
+        echo -e "${GREEN}Python 3.12安装成功！${NC}"
+        python3 --version
+    else
+        echo -e "${RED}Python 3.12安装失败${NC}"
+    fi
+    
+    read -p "按回车键返回..."
 }
 
 # 安装Ollama
