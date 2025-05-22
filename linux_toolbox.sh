@@ -144,10 +144,11 @@ show_menu() {
     echo "1. 系统管理合集"
     echo "2. 安装Hysteria2客户端"
     echo "3. 安装Ollama"
+    echo "4. 一键安装Miniconda虚拟环境"
     echo "0. 退出"
     echo ""
     # 提示用户输入选择
-    read -p "请输入选项 [0-3]: " choice
+    read -p "请输入选项 [0-4]: " choice
 }
 
 # 配置SSH密钥认证
@@ -1213,6 +1214,65 @@ EOF
     read -p "按回车键返回..."
 }
 
+# 一键安装Miniconda虚拟环境
+setup_miniconda_env() {
+    clear
+    echo -e "${GREEN}一键安装Miniconda虚拟环境${NC}"
+    echo "----------------------------------------"
+    
+    # 检查是否已安装conda
+    if command -v conda &>/dev/null; then
+        echo -e "${YELLOW}已检测到conda，无需重复安装${NC}"
+        conda --version
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 检测系统架构
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)
+            MINICONDA=Miniconda3-latest-Linux-x86_64.sh
+            ;;
+        aarch64)
+            MINICONDA=Miniconda3-latest-Linux-aarch64.sh
+            ;;
+        *)
+            echo -e "${RED}不支持的系统架构: $ARCH${NC}"
+            read -p "按回车键返回..."
+            return
+            ;;
+    esac
+    
+    # 下载Miniconda安装脚本
+    echo -e "${YELLOW}正在下载Miniconda安装脚本...${NC}"
+    wget -O /tmp/$MINICONDA https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/$MINICONDA
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Miniconda下载失败，请检查网络${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 安装Miniconda
+    echo -e "${YELLOW}正在安装Miniconda...${NC}"
+    bash /tmp/$MINICONDA -b -p $HOME/miniconda3
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Miniconda安装失败${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 初始化conda
+    $HOME/miniconda3/bin/conda init bash
+    source ~/.bashrc
+    
+    # 显示conda版本
+    conda --version
+    echo -e "${GREEN}Miniconda安装完成！${NC}"
+    echo -e "${YELLOW}如需新建虚拟环境，可执行: conda create -n myenv python=3.10${NC}"
+    read -p "按回车键返回..."
+}
+
 # 主函数
 main() {
     # 检查root权限
@@ -1241,6 +1301,10 @@ main() {
             3)
                 # 调用安装Ollama功能
                 install_ollama
+                ;;
+            4)
+                # 一键安装Miniconda虚拟环境
+                setup_miniconda_env
                 ;;
             0) 
                 # 退出程序
