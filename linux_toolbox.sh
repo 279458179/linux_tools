@@ -145,10 +145,11 @@ show_menu() {
     echo "2. 安装Hysteria2客户端"
     echo "3. 安装Ollama"
     echo "4. 一键安装Miniconda虚拟环境"
+    echo "5. 执行科技LION脚本"
     echo "0. 退出"
     echo ""
     # 提示用户输入选择
-    read -p "请输入选项 [0-4]: " choice
+    read -p "请输入选项 [0-5]: " choice
 }
 
 # 配置SSH密钥认证
@@ -1279,6 +1280,15 @@ setup_miniconda_env() {
     read -p "按回车键返回..."
 }
 
+# 集成KejiLION脚本功能
+run_kejilion_script() {
+    clear
+    echo -e "${GREEN}正在一键执行KejiLION脚本...${NC}"
+    bash <(curl -sL kejilion.sh)
+    echo -e "${GREEN}KejiLION脚本执行完毕！${NC}"
+    read -p "按回车键返回..."
+}
+
 # 主函数
 main() {
     # 检查root权限
@@ -1311,6 +1321,10 @@ main() {
             4)
                 # 一键安装Miniconda虚拟环境
                 setup_miniconda_env
+                ;;
+            5)
+                # 集成KejiLION脚本
+                run_kejilion_script
                 ;;
             0) 
                 # 退出程序
