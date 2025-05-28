@@ -1201,11 +1201,17 @@ EOF
         echo -e "\n${YELLOW}代理信息：${NC}"
         echo "SOCKS5代理: 127.0.0.1:1080"
         echo "HTTP代理: 127.0.0.1:8080"
+        
+        # 将代理设置添加到.bashrc
+        echo -e "\n${YELLOW}正在配置代理设置...${NC}"
+        echo 'export http_proxy="http://127.0.0.1:8080"' >> ~/.bashrc
+        echo 'export https_proxy="http://127.0.0.1:8080"' >> ~/.bashrc
+        
+        echo -e "${GREEN}代理配置已完成！${NC}"
         echo -e "\n${YELLOW}使用说明：${NC}"
-        echo "1. 在浏览器中设置HTTP代理为 127.0.0.1:8080"
-        echo "2. 或在系统网络设置中配置HTTP代理"
-        echo "3. 如需停止服务，请运行: systemctl stop hysteria2"
-        echo "4. 如需查看服务状态，请运行: systemctl status hysteria2"
+        echo "1. 代理设置已添加到 ~/.bashrc"
+        echo "2. 请执行 'source ~/.bashrc' 使配置生效"
+        echo "3. 或重新登录系统使配置生效"
     else
         echo -e "${RED}Hysteria2服务启动失败${NC}"
         echo "请检查配置和日志: journalctl -u hysteria2"
