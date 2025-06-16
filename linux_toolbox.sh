@@ -145,11 +145,12 @@ show_menu() {
     echo "2. 安装Hysteria2客户端"
     echo "3. 安装Ollama"
     echo "4. 一键安装Miniconda虚拟环境"
-    echo "5. 执行科技LION脚本"
+    echo "5. 集成KejiLION脚本"
+    echo "6. 八合一singbox脚本"
     echo "0. 退出"
     echo ""
     # 提示用户输入选择
-    read -p "请输入选项 [0-5]: " choice
+    read -p "请输入选项 [0-6]: " choice
 }
 
 # 配置SSH密钥认证
@@ -1289,6 +1290,19 @@ run_kejilion_script() {
     read -p "按回车键返回..."
 }
 
+# 安装八合一singbox脚本
+install_singbox_script() {
+    clear
+    echo -e "${GREEN}正在安装八合一singbox脚本...${NC}"
+    echo -e "${YELLOW}此脚本由mack-a提供${NC}"
+    
+    # 下载并执行脚本
+    wget -P /root -N --no-check-certificate "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh" && chmod 700 /root/install.sh && /root/install.sh
+    
+    echo -e "${GREEN}脚本执行完毕！${NC}"
+    read -p "按回车键返回..."
+}
+
 # 主函数
 main() {
     # 检查root权限
@@ -1325,6 +1339,10 @@ main() {
             5)
                 # 集成KejiLION脚本
                 run_kejilion_script
+                ;;
+            6)
+                # 安装八合一singbox脚本
+                install_singbox_script
                 ;;
             0) 
                 # 退出程序
