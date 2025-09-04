@@ -147,10 +147,11 @@ show_menu() {
     echo "4. 一键安装Miniconda虚拟环境"
     echo "5. 集成KejiLION脚本"
     echo "6. 八合一singbox脚本"
+    echo "7. YGKKK-warp解锁脚本"
     echo "0. 退出"
     echo ""
     # 提示用户输入选择
-    read -p "请输入选项 [0-6]: " choice
+    read -p "请输入选项 [0-7]: " choice
 }
 
 # 配置SSH密钥认证
@@ -1303,6 +1304,19 @@ install_singbox_script() {
     read -p "按回车键返回..."
 }
 
+# 集成YGKKK-warp脚本功能
+run_ygkkk_warp_script() {
+    clear
+    echo -e "${GREEN}正在执行YGKKK-warp脚本...${NC}"
+    echo -e "${YELLOW}此脚本由yonggekkk提供${NC}"
+    
+    # 下载并执行脚本
+    bash <(curl -Ls https://raw.githubusercontent.com/yonggekkk/warp-yg/main/CFwarp.sh)
+    
+    echo -e "${GREEN}YGKKK-warp脚本执行完毕！${NC}"
+    read -p "按回车键返回..."
+}
+
 # 主函数
 main() {
     # 检查root权限
@@ -1343,6 +1357,10 @@ main() {
             6)
                 # 安装八合一singbox脚本
                 install_singbox_script
+                ;;
+            7)
+                # 集成YGKKK-warp脚本
+                run_ygkkk_warp_script
                 ;;
             0) 
                 # 退出程序
