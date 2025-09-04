@@ -11,6 +11,31 @@ YELLOW='\033[0;33m' # 黄色，用于警告信息
 BLUE='\033[0;34m'   # 蓝色，用于提示信息
 NC='\033[0m'        # 无颜色，用于重置颜色
 
+# 自动拷贝脚本到系统目录
+auto_copy_script() {
+    # 获取脚本的绝对路径
+    SCRIPT_PATH=$(readlink -f "$0")
+    
+    # 检查是否已经存在于系统目录
+    if [ "$SCRIPT_PATH" != "/usr/sbin/cytool" ]; then
+        # 如果脚本不在系统目录，则拷贝过去
+        if [ -f "$SCRIPT_PATH" ]; then
+            echo -e "${YELLOW}正在将脚本拷贝到系统目录...${NC}"
+            cp "$SCRIPT_PATH" /usr/sbin/cytool
+            chmod +x /usr/sbin/cytool
+            
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}脚本已成功拷贝到 /usr/sbin/cytool${NC}"
+                echo -e "${YELLOW}现在您可以使用 'cytool' 命令来运行此脚本${NC}"
+                # 重新执行系统目录中的脚本
+                exec /usr/sbin/cytool
+            else
+                echo -e "${RED}拷贝脚本到系统目录失败${NC}"
+            fi
+        fi
+    fi
+}
+
 # 配置脚本别名
 setup_alias() {
     # 获取脚本的绝对路径
@@ -1321,6 +1346,9 @@ run_ygkkk_warp_script() {
 main() {
     # 检查root权限
     check_root
+    
+    # 自动拷贝脚本到系统目录
+    auto_copy_script
     
     # 配置别名
     setup_alias
