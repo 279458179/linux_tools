@@ -652,6 +652,97 @@ resize_disk() {
     read -p "按回车键返回..."
 }
 
+# 修改SSH端口
+change_ssh_port() {
+    clear
+    echo -e "${GREEN}修改SSH端口${NC}"
+    echo "----------------------------------------"
+    
+    read -p "请输入新的SSH端口号 (1024-65535): " new_port
+    
+    # 验证端口号
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1024 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "${RED}无效的端口号，请输入1024-65535之间的数字${NC}"
+        read -p "按回车键返回..."
+        return
+    fi
+    
+    # 检测系统版本
+    detect_os
+    
+    echo "正在修改SSH端口..."
+    
+    # 检查是否为Ubuntu 24.04及以上版本 (Systemd Socket Activation)
+    is_socket_activation=false
+    if [ "$OS" == "Ubuntu" ]; then
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            # 简单检查 socket 是否激活
+            if systemctl is-active --quiet ssh.socket; then
+                is_socket_activation=true
+            fi
+        fi
+    fi
+    
+    if [ "$is_socket_activation" = true ]; then
+        echo "检测到 Systemd Socket 激活模式 (Ubuntu 24.04+ 特性)..."
+        
+        # 创建 override 目录
+        mkdir -p /etc/systemd/system/ssh.socket.d
+        
+        # 创建 override 配置
+        cat > /etc/systemd/system/ssh.socket.d/listen.conf <<EOF
+[Socket]
+ListenStream=
+ListenStream=$new_port
+EOF
+        
+        # 重载并重启服务
+        systemctl daemon-reload
+        systemctl restart ssh.socket
+        echo -e "${GREEN}SSH端口已通过Socket配置修改为 $new_port${NC}"
+        
+        # 同时修改 sshd_config 以保持一致性
+        if [ -f /etc/ssh/sshd_config ]; then
+            sed -i "s/^#\?Port .*/Port $new_port/" /etc/ssh/sshd_config
+        fi
+        
+    else
+        # 标准 sshd_config 方式
+        echo "使用标准 sshd_config 配置模式..."
+        
+        if [ -f /etc/ssh/sshd_config ]; then
+            sed -i "s/^#\?Port .*/Port $new_port/" /etc/ssh/sshd_config
+            
+            # 重启 SSH 服务
+            if systemctl list-unit-files | grep -q sshd.service; then
+                systemctl restart sshd
+            else
+                systemctl restart ssh
+            fi
+            echo -e "${GREEN}SSH端口已修改为 $new_port${NC}"
+        else
+            echo -e "${RED}未找到 /etc/ssh/sshd_config 文件${NC}"
+        fi
+    fi
+    
+    # 配置防火墙
+    echo "正在配置防火墙..."
+    if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
+        ufw allow $new_port/tcp
+        echo -e "${GREEN}已添加UFW防火墙规则放行端口 $new_port${NC}"
+    elif command -v firewall-cmd &>/dev/null && firewall-cmd --state &>/dev/null; then
+        firewall-cmd --permanent --add-port=$new_port/tcp
+        firewall-cmd --reload
+        echo -e "${GREEN}已添加Firewalld防火墙规则放行端口 $new_port${NC}"
+    else
+        echo -e "${YELLOW}未检测到活动的防火墙或无法自动配置，请手动放行端口 $new_port${NC}"
+    fi
+    
+    echo -e "${YELLOW}重要提示：请务必在断开当前连接前，新开一个终端测试新端口是否可用！${NC}"
+    read -p "按回车键返回..."
+}
+
 # 系统管理菜单
 system_management_menu() {
     while true; do
@@ -671,9 +762,10 @@ system_management_menu() {
         echo "11. 部署VSFTPD服务"
         echo "12. 磁盘挂载LVM"
         echo "13. 编译安装Python3.12"
+        echo "14. 修改SSH端口"
         echo "0. 返回主菜单"
         echo "----------------------------------------"
-        read -p "请选择操作 [0-13]: " choice
+        read -p "请选择操作 [0-14]: " choice
         
         case $choice in
             1) show_system_info ;;
@@ -689,6 +781,7 @@ system_management_menu() {
             11) deploy_vsftpd ;;
             12) lvm_partition_and_mount ;;
             13) install_python3_12 ;;
+            14) change_ssh_port ;;
             0) return ;;
             *)
                 echo -e "${RED}无效的选择${NC}"
