@@ -687,33 +687,63 @@ change_ssh_port() {
     if [ "$is_socket_activation" = true ]; then
         echo "检测到 Systemd Socket 激活模式 (Ubuntu 24.04+ 特性)..."
         
-        # 创建 override 目录
-        mkdir -p /etc/systemd/system/ssh.socket.d
-        
-        # 创建 override 配置
-        # 显式指定 0.0.0.0 和 [::] 以确保 IPv4 和 IPv6 都能正确监听
-        # 即使主配置设置了 BindIPv6Only=ipv6-only，显式指定地址也能生效
-        cat > /etc/systemd/system/ssh.socket.d/listen.conf <<EOF
-[Socket]
-ListenStream=
-ListenStream=0.0.0.0:$new_port
-ListenStream=[::]:$new_port
-EOF
-        
-        # 如果存在用户级的 systemd 配置 /etc/systemd/system/ssh.socket，直接修改它以消除困惑
-        if [ -f /etc/systemd/system/ssh.socket ]; then
-            echo "检测到 /etc/systemd/system/ssh.socket 存在，正在更新其中的端口配置..."
-            # 备份
-            cp /etc/systemd/system/ssh.socket /etc/systemd/system/ssh.socket.bak
-            # 尝试替换端口。这里假设格式比较标准。
-            # 先清除已有的 ListenStream
-            sed -i '/^ListenStream=/d' /etc/systemd/system/ssh.socket
-            # 在 [Socket] 部分后添加新的 ListenStream
-            # 注意：这只是一个简单的尝试，可能不完美，但能解决大部分直观问题
-            sed -i "/\[Socket\]/a ListenStream=[::]:$new_port\nListenStream=0.0.0.0:$new_port" /etc/systemd/system/ssh.socket
-            echo -e "${GREEN}已更新 /etc/systemd/system/ssh.socket${NC}"
+        # 1. 修改 /etc/ssh/sshd_config
+        if [ -f /etc/ssh/sshd_config ]; then
+            echo "正在修改 /etc/ssh/sshd_config..."
+            sed -i "s/^#\?Port .*/Port $new_port/" /etc/ssh/sshd_config
+        else
+            echo -e "${RED}警告：未找到 /etc/ssh/sshd_config${NC}"
         fi
-
+        
+        # 2. 寻找并修改 ssh.socket 文件
+        # 优先查找用户指定的路径 /etc/systemd/system/ssh.service.requires/ssh.socket
+        SOCKET_FILE=""
+        if [ -f "/etc/systemd/system/ssh.service.requires/ssh.socket" ]; then
+            SOCKET_FILE="/etc/systemd/system/ssh.service.requires/ssh.socket"
+        # 其次查找 systemctl 报告的实际路径
+        elif command -v systemctl &>/dev/null; then
+            SOCKET_FILE=$(systemctl show -p FragmentPath ssh.socket | cut -d= -f2)
+        fi
+        
+        # 如果还没找到，尝试常见路径
+        if [ -z "$SOCKET_FILE" ] || [ ! -f "$SOCKET_FILE" ]; then
+            if [ -f "/lib/systemd/system/ssh.socket" ]; then
+                SOCKET_FILE="/lib/systemd/system/ssh.socket"
+            elif [ -f "/etc/systemd/system/ssh.socket" ]; then
+                SOCKET_FILE="/etc/systemd/system/ssh.socket"
+            fi
+        fi
+        
+        if [ -n "$SOCKET_FILE" ] && [ -f "$SOCKET_FILE" ]; then
+            echo "正在修改 ssh.socket 文件: $SOCKET_FILE"
+            # 备份
+            cp "$SOCKET_FILE" "${SOCKET_FILE}.bak"
+            
+            # 删除旧的 ListenStream
+            sed -i '/^ListenStream=/d' "$SOCKET_FILE"
+            
+            # 添加新的 ListenStream (支持 IPv4 和 IPv6)
+            # 在 [Socket] 部分后添加
+            if grep -q "\[Socket\]" "$SOCKET_FILE"; then
+                sed -i "/\[Socket\]/a ListenStream=[::]:$new_port\nListenStream=0.0.0.0:$new_port" "$SOCKET_FILE"
+            else
+                # 如果没找到 [Socket] 节（不太可能），追加到文件末尾
+                echo -e "\n[Socket]\nListenStream=0.0.0.0:$new_port\nListenStream=[::]:$new_port" >> "$SOCKET_FILE"
+            fi
+            echo -e "${GREEN}已更新 $SOCKET_FILE${NC}"
+        else
+            echo -e "${RED}错误：无法找到 ssh.socket 配置文件${NC}"
+            read -p "按回车键返回..."
+            return
+        fi
+        
+        # 3. 清理之前的 override 配置（如果存在），以免冲突
+        if [ -f /etc/systemd/system/ssh.socket.d/listen.conf ]; then
+            echo "清理旧的 override 配置文件..."
+            rm -f /etc/systemd/system/ssh.socket.d/listen.conf
+            # 如果目录空了，也可以删除目录，这里保留目录以防万一
+        fi
+        
         # 停止服务和Socket以确保彻底重载
         echo "正在重载 SSH Socket 配置..."
         systemctl stop ssh.service
@@ -721,7 +751,7 @@ EOF
         systemctl daemon-reload
         systemctl start ssh.socket
         
-        echo -e "${GREEN}SSH端口已通过Socket配置修改为 $new_port${NC}"
+        echo -e "${GREEN}SSH端口已修改为 $new_port${NC}"
         
         # 验证端口是否监听
         sleep 2
@@ -731,11 +761,6 @@ EOF
             echo -e "${RED}警告：未检测到端口 $new_port 在监听，可能配置未生效或启动失败${NC}"
             echo "尝试查看状态："
             systemctl status ssh.socket --no-pager
-        fi
-        
-        # 同时修改 sshd_config 以保持一致性
-        if [ -f /etc/ssh/sshd_config ]; then
-            sed -i "s/^#\?Port .*/Port $new_port/" /etc/ssh/sshd_config
         fi
         
     else
