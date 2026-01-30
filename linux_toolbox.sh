@@ -691,12 +691,29 @@ change_ssh_port() {
         mkdir -p /etc/systemd/system/ssh.socket.d
         
         # 创建 override 配置
+        # 显式指定 0.0.0.0 和 [::] 以确保 IPv4 和 IPv6 都能正确监听
+        # 即使主配置设置了 BindIPv6Only=ipv6-only，显式指定地址也能生效
         cat > /etc/systemd/system/ssh.socket.d/listen.conf <<EOF
 [Socket]
 ListenStream=
-ListenStream=$new_port
+ListenStream=0.0.0.0:$new_port
+ListenStream=[::]:$new_port
 EOF
         
+        # 如果存在用户级的 systemd 配置 /etc/systemd/system/ssh.socket，直接修改它以消除困惑
+        if [ -f /etc/systemd/system/ssh.socket ]; then
+            echo "检测到 /etc/systemd/system/ssh.socket 存在，正在更新其中的端口配置..."
+            # 备份
+            cp /etc/systemd/system/ssh.socket /etc/systemd/system/ssh.socket.bak
+            # 尝试替换端口。这里假设格式比较标准。
+            # 先清除已有的 ListenStream
+            sed -i '/^ListenStream=/d' /etc/systemd/system/ssh.socket
+            # 在 [Socket] 部分后添加新的 ListenStream
+            # 注意：这只是一个简单的尝试，可能不完美，但能解决大部分直观问题
+            sed -i "/\[Socket\]/a ListenStream=[::]:$new_port\nListenStream=0.0.0.0:$new_port" /etc/systemd/system/ssh.socket
+            echo -e "${GREEN}已更新 /etc/systemd/system/ssh.socket${NC}"
+        fi
+
         # 停止服务和Socket以确保彻底重载
         echo "正在重载 SSH Socket 配置..."
         systemctl stop ssh.service
