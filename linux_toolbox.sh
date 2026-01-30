@@ -697,10 +697,24 @@ ListenStream=
 ListenStream=$new_port
 EOF
         
-        # 重载并重启服务
+        # 停止服务和Socket以确保彻底重载
+        echo "正在重载 SSH Socket 配置..."
+        systemctl stop ssh.service
+        systemctl stop ssh.socket
         systemctl daemon-reload
-        systemctl restart ssh.socket
+        systemctl start ssh.socket
+        
         echo -e "${GREEN}SSH端口已通过Socket配置修改为 $new_port${NC}"
+        
+        # 验证端口是否监听
+        sleep 2
+        if ss -tuln | grep -q ":$new_port "; then
+            echo -e "${GREEN}验证成功：端口 $new_port 正在监听中${NC}"
+        else
+            echo -e "${RED}警告：未检测到端口 $new_port 在监听，可能配置未生效或启动失败${NC}"
+            echo "尝试查看状态："
+            systemctl status ssh.socket --no-pager
+        fi
         
         # 同时修改 sshd_config 以保持一致性
         if [ -f /etc/ssh/sshd_config ]; then
