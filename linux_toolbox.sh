@@ -799,6 +799,117 @@ change_ssh_port() {
     read -p "按回车键返回..."
 }
 
+# 屏蔽公网测绘扫描
+block_scanners() {
+    clear
+    echo -e "${GREEN}屏蔽公网测绘扫描 (Censys/Shodan等)${NC}"
+    echo "----------------------------------------"
+    echo -e "${YELLOW}此功能将配置防火墙规则，屏蔽常见公网测绘引擎的IP段。${NC}"
+    echo -e "${YELLOW}这可以防止服务器被Censys、Shodan等搜索引擎索引，提高安全性。${NC}"
+    echo -e "${YELLOW}注意：这不会影响正常用户的访问。${NC}"
+    echo "----------------------------------------"
+    
+    read -p "是否继续？(y/n): " confirm
+    if [[ $confirm != "y" && $confirm != "Y" ]]; then
+        return
+    fi
+    
+    # 常见扫描器IP段列表 (Censys, Shodan, etc.)
+    # 来源参考：官方文档及社区收集
+    SCANNER_IPS=(
+        # Censys
+        "162.142.125.0/24"
+        "167.248.133.0/24"
+        "74.120.14.0/24"
+        "192.35.168.0/23"
+        "167.94.138.0/24"
+        "167.94.145.0/24"
+        "167.94.146.0/24"
+        # Shodan
+        "66.240.205.34"
+        "71.6.135.131"
+        "71.6.165.200"
+        "71.6.167.142"
+        "82.221.105.6"
+        "82.221.105.7"
+        "93.120.27.106"
+        "104.131.0.0/16"
+        "104.236.0.0/16"
+        "185.180.143.0/24"
+        "188.138.9.0/24"
+        "198.20.69.0/24"
+        "198.20.70.0/24"
+        "198.20.87.0/24"
+        "198.20.99.0/24"
+        "208.180.20.0/24"
+        # 其他常见扫描器 (Shadowserver, etc)
+        "216.218.206.0/24"
+    )
+    
+    echo "正在检测防火墙类型..."
+    
+    if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
+        echo -e "${GREEN}检测到 UFW 防火墙${NC}"
+        echo "正在添加拒绝规则..."
+        for ip in "${SCANNER_IPS[@]}"; do
+            ufw deny from "$ip" to any >/dev/null 2>&1
+            echo "已屏蔽: $ip"
+        done
+        ufw reload
+        echo -e "${GREEN}UFW 规则配置完成${NC}"
+        
+    elif command -v firewall-cmd &>/dev/null && firewall-cmd --state &>/dev/null; then
+        echo -e "${GREEN}检测到 Firewalld 防火墙${NC}"
+        echo "正在添加拒绝规则..."
+        for ip in "${SCANNER_IPS[@]}"; do
+            firewall-cmd --permanent --add-rich-rule="rule family='ipv4' source address='$ip' drop" >/dev/null 2>&1
+            echo "已屏蔽: $ip"
+        done
+        firewall-cmd --reload
+        echo -e "${GREEN}Firewalld 规则配置完成${NC}"
+        
+    elif command -v iptables &>/dev/null; then
+        echo -e "${GREEN}检测到 Iptables${NC}"
+        # 检查是否可以使用 ipset (更高效)
+        if command -v ipset &>/dev/null; then
+            echo "使用 ipset 进行高效屏蔽..."
+            ipset create scanner_blacklist hash:net maxelem 65536 2>/dev/null
+            
+            # 清空现有集合以避免重复（或者直接添加）
+            # ipset flush scanner_blacklist
+            
+            for ip in "${SCANNER_IPS[@]}"; do
+                ipset add scanner_blacklist "$ip" -exist
+            done
+            
+            # 添加 iptables 规则引用 ipset
+            if ! iptables -C INPUT -m set --match-set scanner_blacklist src -j DROP 2>/dev/null; then
+                iptables -I INPUT -m set --match-set scanner_blacklist src -j DROP
+                echo "已添加 iptables 规则引用 scanner_blacklist"
+            fi
+            
+            # 保存 ipset 和 iptables (尝试)
+            # 这里保存比较复杂，依赖于具体发行版，暂不做持久化处理提示用户
+            echo -e "${YELLOW}注意：Iptables/Ipset 规则已生效，但重启后可能会失效。建议安装 iptables-persistent 或 ipset-persistent。${NC}"
+            
+        else
+            echo "正在添加 iptables 规则..."
+            for ip in "${SCANNER_IPS[@]}"; do
+                if ! iptables -C INPUT -s "$ip" -j DROP 2>/dev/null; then
+                    iptables -I INPUT -s "$ip" -j DROP
+                    echo "已屏蔽: $ip"
+                fi
+            done
+            echo -e "${YELLOW}注意：Iptables 规则已生效，请确保保存规则（如 service iptables save）。${NC}"
+        fi
+        
+    else
+        echo -e "${RED}未检测到支持的防火墙 (UFW/Firewalld/Iptables)，无法自动配置。${NC}"
+    fi
+    
+    read -p "按回车键返回..."
+}
+
 # 系统管理菜单
 system_management_menu() {
     while true; do
@@ -819,9 +930,10 @@ system_management_menu() {
         echo "12. 磁盘挂载LVM"
         echo "13. 编译安装Python3.12"
         echo "14. 修改SSH端口"
+        echo "15. 屏蔽公网测绘扫描"
         echo "0. 返回主菜单"
         echo "----------------------------------------"
-        read -p "请选择操作 [0-14]: " choice
+        read -p "请选择操作 [0-15]: " choice
         
         case $choice in
             1) show_system_info ;;
@@ -838,6 +950,7 @@ system_management_menu() {
             12) lvm_partition_and_mount ;;
             13) install_python3_12 ;;
             14) change_ssh_port ;;
+            15) block_scanners ;;
             0) return ;;
             *)
                 echo -e "${RED}无效的选择${NC}"
