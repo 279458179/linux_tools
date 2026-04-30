@@ -1237,7 +1237,7 @@ install_python3_12() {
         
         # 下载并编译 Python 3.12
         cd /usr/src
-        sudo wget https://mirrors.tuna.tsinghua.edu.cn/python/3.12.0/Python-3.12.0.tgz
+        sudo wget https://www.python.org/ftp/python/3.12.0/Python-3.12.0.tgz
         sudo tar xzf Python-3.12.0.tgz
         cd Python-3.12.0
         sudo ./configure --enable-optimizations
@@ -1285,7 +1285,7 @@ install_ollama() {
     if ! command -v docker &>/dev/null; then
         echo -e "${YELLOW}正在安装Docker...${NC}"
         # 安装Docker
-        curl -fsSL https://get.docker.com | sh -s -- --mirror Aliyun
+        curl -fsSL https://get.docker.com | sh
         if [ $? -ne 0 ]; then
             echo -e "${RED}Docker安装失败${NC}"
             read -p "按回车键返回..."
@@ -1585,7 +1585,7 @@ install_singbox_script() {
     echo -e "${YELLOW}此脚本由mack-a提供${NC}"
     
     # 下载并执行脚本
-    wget -P /root -N --no-check-certificate "https://ghproxy.com/https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh" && chmod 700 /root/install.sh && /root/install.sh
+    wget -P /root -N --no-check-certificate "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh" && chmod 700 /root/install.sh && /root/install.sh
     
     echo -e "${GREEN}脚本执行完毕！${NC}"
     read -p "按回车键返回..."
@@ -1598,7 +1598,7 @@ run_ygkkk_warp_script() {
     echo -e "${YELLOW}此脚本由yonggekkk提供${NC}"
     
     # 下载并执行脚本
-    bash <(curl -Ls https://ghproxy.com/https://raw.githubusercontent.com/yonggekkk/warp-yg/main/CFwarp.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/yonggekkk/warp-yg/main/CFwarp.sh)
     
     echo -e "${GREEN}YGKKK-warp脚本执行完毕！${NC}"
     read -p "按回车键返回..."
@@ -1673,7 +1673,7 @@ if [ -t 0 ]; then
 else
     # 非交互式shell，先下载脚本再执行
     echo "正在下载脚本..."
-    curl -sL https://ghproxy.com/https://raw.githubusercontent.com/279458179/linux_tools/master/linux_toolbox.sh -o /tmp/linux_toolbox.sh
+    curl -sL https://raw.githubusercontent.com/279458179/linux_tools/master/linux_toolbox.sh -o /tmp/linux_toolbox.sh
     chmod +x /tmp/linux_toolbox.sh
     exec /tmp/linux_toolbox.sh
 fi
