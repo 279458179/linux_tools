@@ -1833,17 +1833,6 @@ install_v2raya_docker() {
         echo -e "${RED}V2rayA Docker容器启动失败${NC}"
     fi
 }
-        echo -e "\n${YELLOW}使用说明：${NC}"
-        echo "1. Web管理界面地址: http://服务器IP:2017"
-        echo "2. 首次访问需要创建管理员账号"
-        echo "3. 导入节点订阅或节点链接后即可使用"
-        echo "4. 默认SOCKS5代理: 127.0.0.1:10808"
-        echo "5. 默认HTTP代理: 127.0.0.1:10809"
-    else
-        echo -e "${RED}V2rayA服务启动失败${NC}"
-        echo "请检查日志: journalctl -u v2raya"
-    fi
-}
 
 # 安装V2ray-core (命令行版本)
 install_v2ray_core() {
