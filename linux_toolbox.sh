@@ -1586,7 +1586,7 @@ install_v2raya() {
 
     # 安装V2ray-core (V2rayA依赖)
     echo -e "${YELLOW}正在安装V2ray-core...${NC}"
-    bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+    bash <(curl -L https://ghproxy.com/https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
 
     if [ $? -ne 0 ]; then
         echo -e "${RED}V2ray-core安装失败${NC}"
@@ -1600,13 +1600,13 @@ install_v2raya() {
     ARCH=$(uname -m)
     case $ARCH in
         x86_64)
-            V2RAYA_FILE="v2raya_linux_x64"
+            V2RAYA_FILE="v2raya_linux_x64_2.x"
             ;;
         aarch64)
-            V2RAYA_FILE="v2raya_linux_arm64"
+            V2RAYA_FILE="v2raya_linux_arm64_2.x"
             ;;
         armv7l)
-            V2RAYA_FILE="v2raya_linux_arm"
+            V2RAYA_FILE="v2raya_linux_arm_2.x"
             ;;
         *)
             echo -e "${RED}不支持的系统架构: $ARCH${NC}"
@@ -1614,18 +1614,27 @@ install_v2raya() {
             ;;
     esac
 
-    # 获取最新版本号
-    LATEST_VERSION=$(curl -s https://api.github.com/repos/v2rayA/v2rayA/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    # 获取最新版本号 (使用ghproxy加速API访问)
+    LATEST_VERSION=$(curl -s https://ghproxy.com/https://api.github.com/repos/v2rayA/v2rayA/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
 
     if [ -z "$LATEST_VERSION" ]; then
-        LATEST_VERSION="v2.2.5"
+        echo -e "${YELLOW}无法获取最新版本，使用默认版本v2.2.7.5${NC}"
+        LATEST_VERSION="v2.2.7.5"
     fi
 
-    wget -O /tmp/v2raya "https://github.com/v2rayA/v2rayA/releases/download/${LATEST_VERSION}/${V2RAYA_FILE}"
+    echo -e "${YELLOW}正在下载版本: ${LATEST_VERSION}${NC}"
+
+    # 使用ghproxy加速下载
+    wget -O /tmp/v2raya "https://ghproxy.com/https://github.com/v2rayA/v2rayA/releases/download/${LATEST_VERSION}/${V2RAYA_FILE}"
 
     if [ $? -ne 0 ]; then
-        echo -e "${RED}V2rayA下载失败${NC}"
-        return
+        echo -e "${YELLOW}ghproxy下载失败，尝试直接下载...${NC}"
+        wget -O /tmp/v2raya "https://github.com/v2rayA/v2rayA/releases/download/${LATEST_VERSION}/${V2RAYA_FILE}"
+
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}V2rayA下载失败${NC}"
+            return
+        fi
     fi
 
     # 安装V2rayA
@@ -1674,8 +1683,8 @@ EOF
 install_v2ray_core() {
     echo -e "${YELLOW}正在安装V2ray-core...${NC}"
 
-    # 使用官方安装脚本
-    bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+    # 使用官方安装脚本 (ghproxy加速)
+    bash <(curl -L https://ghproxy.com/https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
 
     if [ $? -ne 0 ]; then
         echo -e "${RED}V2ray-core安装失败${NC}"
@@ -1797,8 +1806,8 @@ EOF
 install_xray_core() {
     echo -e "${YELLOW}正在安装Xray-core...${NC}"
 
-    # 使用官方安装脚本
-    bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
+    # 使用官方安装脚本 (ghproxy加速)
+    bash <(curl -L https://ghproxy.com/https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
 
     if [ $? -ne 0 ]; then
         echo -e "${RED}Xray-core安装失败${NC}"
