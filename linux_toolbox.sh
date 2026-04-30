@@ -1419,9 +1419,9 @@ setup_hysteria2_client() {
         return
     fi
     
-    # 使用官方一键脚本安装（自动选用国内源）
+    # 使用官方一键脚本安装
     echo -e "${YELLOW}正在使用官方一键脚本安装Hysteria2客户端...${NC}"
-    bash <(curl -fsSL https://ghproxy.com/https://raw.githubusercontent.com/apernet/hysteria/master/install.sh)
+    bash <(curl -fsSL https://get.hy2.sh/)
     if [ $? -ne 0 ]; then
         echo -e "${RED}Hysteria2客户端自动安装失败，请检查网络或手动安装${NC}"
         read -p "按回车键返回..."
