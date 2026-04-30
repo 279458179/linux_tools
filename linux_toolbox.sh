@@ -167,7 +167,7 @@ show_welcome() {
 show_menu() {
     # 显示所有可用的功能选项
     echo "1. 系统管理合集"
-    echo "2. 安装Hysteria2客户端"
+    echo "2. 科学客户端合集"
     echo "3. 安装Ollama"
     echo "4. 一键安装Miniconda虚拟环境"
     echo "5. 集成KejiLION脚本"
@@ -1510,6 +1510,411 @@ EOF
     read -p "按回车键返回..."
 }
 
+# 科学客户端合集菜单
+proxy_client_menu() {
+    while true; do
+        clear
+        echo -e "${GREEN}科学客户端合集${NC}"
+        echo "----------------------------------------"
+        echo "1. 安装Hysteria2客户端"
+        echo "2. 安装V2ray客户端"
+        echo "0. 返回主菜单"
+        echo "----------------------------------------"
+        read -p "请选择操作 [0-2]: " proxy_choice
+
+        case $proxy_choice in
+            1) setup_hysteria2_client ;;
+            2) install_v2ray_client ;;
+            0) return ;;
+            *)
+                echo -e "${RED}无效的选择${NC}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+# 安装V2ray客户端
+install_v2ray_client() {
+    clear
+    echo -e "${GREEN}安装V2ray客户端${NC}"
+    echo "----------------------------------------"
+
+    # 检测操作系统类型
+    detect_os
+
+    echo -e "${YELLOW}请选择V2ray客户端类型：${NC}"
+    echo "1. V2rayA (带Web管理界面)"
+    echo "2. V2ray-core (命令行版本)"
+    echo "3. Xray-core (命令行版本，支持更多协议)"
+    read -p "请输入选项 [1-3]: " v2ray_type
+
+    case $v2ray_type in
+        1)
+            install_v2raya
+            ;;
+        2)
+            install_v2ray_core
+            ;;
+        3)
+            install_xray_core
+            ;;
+        *)
+            echo -e "${RED}无效的选择${NC}"
+            read -p "按回车键返回..."
+            return
+            ;;
+    esac
+
+    read -p "按回车键返回..."
+}
+
+# 安装V2rayA (带Web管理界面)
+install_v2raya() {
+    echo -e "${YELLOW}正在安装V2rayA...${NC}"
+
+    # 检测操作系统类型
+    detect_os
+
+    # 安装依赖
+    if [ "$OS" == "CentOS" ] || [ "$OS" == "AlmaLinux" ]; then
+        yum install -y wget curl
+    elif [ "$OS" == "Ubuntu" ]; then
+        apt update
+        apt install -y wget curl
+    fi
+
+    # 安装V2ray-core (V2rayA依赖)
+    echo -e "${YELLOW}正在安装V2ray-core...${NC}"
+    bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}V2ray-core安装失败${NC}"
+        return
+    fi
+
+    # 安装V2rayA
+    echo -e "${YELLOW}正在下载V2rayA...${NC}"
+
+    # 根据系统架构选择下载链接
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)
+            V2RAYA_FILE="v2raya_linux_x64"
+            ;;
+        aarch64)
+            V2RAYA_FILE="v2raya_linux_arm64"
+            ;;
+        armv7l)
+            V2RAYA_FILE="v2raya_linux_arm"
+            ;;
+        *)
+            echo -e "${RED}不支持的系统架构: $ARCH${NC}"
+            return
+            ;;
+    esac
+
+    # 获取最新版本号
+    LATEST_VERSION=$(curl -s https://api.github.com/repos/v2rayA/v2rayA/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+
+    if [ -z "$LATEST_VERSION" ]; then
+        LATEST_VERSION="v2.2.5"
+    fi
+
+    wget -O /tmp/v2raya "https://github.com/v2rayA/v2rayA/releases/download/${LATEST_VERSION}/${V2RAYA_FILE}"
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}V2rayA下载失败${NC}"
+        return
+    fi
+
+    # 安装V2rayA
+    mv /tmp/v2raya /usr/local/bin/v2raya
+    chmod +x /usr/local/bin/v2raya
+
+    # 创建systemd服务文件
+    cat > /etc/systemd/system/v2raya.service << EOF
+[Unit]
+Description=V2rayA Service
+Documentation=https://github.com/v2rayA/v2rayA
+After=network.target nss-lookup.target v2ray.service
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/v2raya
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # 启动服务
+    systemctl daemon-reload
+    systemctl enable v2raya
+    systemctl start v2raya
+
+    # 检查服务状态
+    if systemctl is-active --quiet v2raya; then
+        echo -e "${GREEN}V2rayA安装成功！${NC}"
+        echo -e "\n${YELLOW}使用说明：${NC}"
+        echo "1. Web管理界面地址: http://服务器IP:2017"
+        echo "2. 首次访问需要创建管理员账号"
+        echo "3. 导入节点订阅或节点链接后即可使用"
+        echo "4. 默认SOCKS5代理: 127.0.0.1:10808"
+        echo "5. 默认HTTP代理: 127.0.0.1:10809"
+    else
+        echo -e "${RED}V2rayA服务启动失败${NC}"
+        echo "请检查日志: journalctl -u v2raya"
+    fi
+}
+
+# 安装V2ray-core (命令行版本)
+install_v2ray_core() {
+    echo -e "${YELLOW}正在安装V2ray-core...${NC}"
+
+    # 使用官方安装脚本
+    bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}V2ray-core安装失败${NC}"
+        return
+    fi
+
+    echo -e "${GREEN}V2ray-core安装成功！${NC}"
+    echo -e "\n${YELLOW}使用说明：${NC}"
+    echo "1. 配置文件位置: /usr/local/etc/v2ray/config.json"
+    echo "2. 启动服务: systemctl start v2ray"
+    echo "3. 停止服务: systemctl stop v2ray"
+    echo "4. 查看状态: systemctl status v2ray"
+    echo "5. 查看日志: journalctl -u v2ray"
+    echo -e "\n${YELLOW}请手动编辑配置文件 /usr/local/etc/v2ray/config.json 添加节点信息${NC}"
+
+    # 提示是否编辑配置
+    read -p "是否现在编辑配置文件？(y/n): " edit_config
+    if [[ $edit_config == "y" || $edit_config == "Y" ]]; then
+        # 提示输入vmess链接
+        read -p "请输入VMess链接 (vmess://...): " vmess_link
+
+        if [[ $vmess_link =~ ^vmess:// ]]; then
+            # 解析vmess链接
+            vmess_json=$(echo "$vmess_link" | sed 's/vmess:\/\///' | base64 -d 2>/dev/null)
+
+            if [ -n "$vmess_json" ]; then
+                # 从JSON中提取信息
+                V2RAY_ADDR=$(echo "$vmess_json" | grep -o '"add":"[^"]*"' | cut -d'"' -f4)
+                V2RAY_PORT=$(echo "$vmess_json" | grep -o '"port":"[^"]*"' | cut -d'"' -f4)
+                V2RAY_ID=$(echo "$vmess_json" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+                V2RAY_NET=$(echo "$vmess_json" | grep -o '"net":"[^"]*"' | cut -d'"' -f4)
+                V2RAY_TYPE=$(echo "$vmess_json" | grep -o '"type":"[^"]*"' | cut -d'"' -f4)
+                V2RAY_HOST=$(echo "$vmess_json" | grep -o '"host":"[^"]*"' | cut -d'"' -f4)
+                V2RAY_PATH=$(echo "$vmess_json" | grep -o '"path":"[^"]*"' | cut -d'"' -f4)
+                V2RAY_TLS=$(echo "$vmess_json" | grep -o '"tls":"[^"]*"' | cut -d'"' -f4)
+                V2RAY_SNI=$(echo "$vmess_json" | grep -o '"sni":"[^"]*"' | cut -d'"' -f4)
+
+                # 创建配置文件
+                cat > /usr/local/etc/v2ray/config.json << EOF
+{
+  "inbounds": [
+    {
+      "port": 10808,
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"]
+      },
+      "settings": {
+        "udp": true
+      }
+    },
+    {
+      "port": 10809,
+      "protocol": "http",
+      "settings": {
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "$V2RAY_ADDR",
+            "port": $V2RAY_PORT,
+            "users": [
+              {
+                "id": "$V2RAY_ID",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "$V2RAY_NET",
+        "security": "$V2RAY_TLS",
+        "tlsSettings": {
+          "serverName": "$V2RAY_SNI",
+          "allowInsecure": false
+        },
+        "wsSettings": {
+          "path": "$V2RAY_PATH",
+          "headers": {
+            "Host": "$V2RAY_HOST"
+          }
+        }
+      }
+    }
+  ]
+}
+EOF
+
+                # 启动服务
+                systemctl enable v2ray
+                systemctl start v2ray
+
+                if systemctl is-active --quiet v2ray; then
+                    echo -e "${GREEN}V2ray服务已启动！${NC}"
+                    echo "SOCKS5代理: 127.0.0.1:10808"
+                    echo "HTTP代理: 127.0.0.1:10809"
+                else
+                    echo -e "${RED}V2ray服务启动失败，请检查配置文件${NC}"
+                fi
+            else
+                echo -e "${RED}无法解析VMess链接${NC}"
+            fi
+        else
+            echo -e "${YELLOW}未输入有效的VMess链接，请手动编辑配置文件${NC}"
+        fi
+    fi
+}
+
+# 安装Xray-core (命令行版本，支持更多协议)
+install_xray_core() {
+    echo -e "${YELLOW}正在安装Xray-core...${NC}"
+
+    # 使用官方安装脚本
+    bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Xray-core安装失败${NC}"
+        return
+    fi
+
+    echo -e "${GREEN}Xray-core安装成功！${NC}"
+    echo -e "\n${YELLOW}使用说明：${NC}"
+    echo "1. 配置文件位置: /usr/local/etc/xray/config.json"
+    echo "2. 启动服务: systemctl start xray"
+    echo "3. 停止服务: systemctl stop xray"
+    echo "4. 查看状态: systemctl status xray"
+    echo "5. 查看日志: journalctl -u xray"
+    echo -e "\n${YELLOW}Xray支持更多协议：VLESS、XTLS、Reality等${NC}"
+    echo -e "${YELLOW}请手动编辑配置文件 /usr/local/etc/xray/config.json 添加节点信息${NC}"
+
+    # 提示是否编辑配置
+    read -p "是否现在编辑配置文件？(y/n): " edit_config
+    if [[ $edit_config == "y" || $edit_config == "Y" ]]; then
+        # 提示输入vless链接
+        read -p "请输入VLESS链接 (vless://...): " vless_link
+
+        if [[ $vless_link =~ ^vless:// ]]; then
+            # 解析vless链接
+            VLESS_UUID=$(echo "$vless_link" | sed -n 's/.*:\/\/\([^@]*\)@.*/\1/p')
+            VLESS_ADDR=$(echo "$vless_link" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+            VLESS_PORT=$(echo "$vless_link" | sed -n 's/.*:\([0-9]*\).*/\1/p')
+            VLESS_NET=$(echo "$vless_link" | sed -n 's/.*type=\([^&]*\).*/\1/p')
+            VLESS_TLS=$(echo "$vless_link" | sed -n 's/.*security=\([^&]*\).*/\1/p')
+            VLESS_SNI=$(echo "$vless_link" | sed -n 's/.*sni=\([^&]*\).*/\1/p')
+            VLESS_PATH=$(echo "$vless_link" | sed -n 's/.*path=\([^&]*\).*/\1/p')
+            VLESS_HOST=$(echo "$vless_link" | sed -n 's/.*host=\([^&]*\).*/\1/p')
+            VLESS_FLOW=$(echo "$vless_link" | sed -n 's/.*flow=\([^&]*\).*/\1/p')
+
+            # 创建配置文件
+            cat > /usr/local/etc/xray/config.json << EOF
+{
+  "inbounds": [
+    {
+      "port": 10808,
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"]
+      },
+      "settings": {
+        "udp": true
+      }
+    },
+    {
+      "port": 10809,
+      "protocol": "http",
+      "settings": {
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "$VLESS_ADDR",
+            "port": $VLESS_PORT,
+            "users": [
+              {
+                "id": "$VLESS_UUID",
+                "flow": "$VLESS_FLOW",
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "$VLESS_NET",
+        "security": "$VLESS_TLS",
+        "tlsSettings": {
+          "serverName": "$VLESS_SNI",
+          "allowInsecure": false
+        },
+        "wsSettings": {
+          "path": "$VLESS_PATH",
+          "headers": {
+            "Host": "$VLESS_HOST"
+          }
+        },
+        "realitySettings": {
+          "serverName": "$VLESS_SNI",
+          "publicKey": "",
+          "fingerprint": "chrome"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+            # 启动服务
+            systemctl enable xray
+            systemctl start xray
+
+            if systemctl is-active --quiet xray; then
+                echo -e "${GREEN}Xray服务已启动！${NC}"
+                echo "SOCKS5代理: 127.0.0.1:10808"
+                echo "HTTP代理: 127.0.0.1:10809"
+            else
+                echo -e "${RED}Xray服务启动失败，请检查配置文件${NC}"
+            fi
+        else
+            echo -e "${YELLOW}未输入有效的VLESS链接，请手动编辑配置文件${NC}"
+        fi
+    fi
+}
+
 # 一键安装Miniconda虚拟环境
 setup_miniconda_env() {
     clear
@@ -1624,13 +2029,13 @@ main() {
         
         # 根据用户选择执行相应功能
         case $choice in
-            1) 
+            1)
                 # 调用系统管理菜单
                 system_management_menu
                 ;;
-            2) 
-                # 调用安装Hysteria2客户端功能
-                setup_hysteria2_client
+            2)
+                # 调用科学客户端合集菜单
+                proxy_client_menu
                 ;;
             3)
                 # 调用安装Ollama功能
@@ -1652,7 +2057,7 @@ main() {
                 # 集成YGKKK-warp脚本
                 run_ygkkk_warp_script
                 ;;
-            0) 
+            0)
                 # 退出程序
                 echo -e "${GREEN}感谢使用！再见！${NC}"
                 exit 0
