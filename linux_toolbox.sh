@@ -1576,6 +1576,75 @@ install_v2raya() {
     # 检测操作系统类型
     detect_os
 
+    echo -e "${YELLOW}请选择安装方式：${NC}"
+    echo "1. Snap安装 (推荐，最简单)"
+    echo "2. 手动下载安装"
+    echo "3. Docker安装"
+    read -p "请输入选项 [1-3]: " install_method
+
+    case $install_method in
+        1)
+            install_v2raya_snap
+            ;;
+        2)
+            install_v2raya_manual
+            ;;
+        3)
+            install_v2raya_docker
+            ;;
+        *)
+            echo -e "${RED}无效的选择${NC}"
+            return
+            ;;
+    esac
+}
+
+# Snap安装V2rayA
+install_v2raya_snap() {
+    echo -e "${YELLOW}正在通过Snap安装V2rayA...${NC}"
+
+    # 检查snap是否已安装
+    if ! command -v snap &>/dev/null; then
+        echo -e "${YELLOW}正在安装snapd...${NC}"
+        if [ "$OS" == "CentOS" ] || [ "$OS" == "AlmaLinux" ]; then
+            yum install -y snapd
+            systemctl enable --now snapd.socket
+        elif [ "$OS" == "Ubuntu" ]; then
+            apt update
+            apt install -y snapd
+        fi
+    fi
+
+    # 安装V2rayA
+    snap install v2raya
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Snap安装V2rayA失败${NC}"
+        echo -e "${YELLOW}请尝试手动下载安装方式${NC}"
+        return
+    fi
+
+    # 启动服务
+    systemctl enable v2raya
+    systemctl start v2raya
+
+    # 检查服务状态
+    if systemctl is-active --quiet v2raya; then
+        echo -e "${GREEN}V2rayA安装成功！${NC}"
+        echo -e "\n${YELLOW}使用说明：${NC}"
+        echo "1. Web管理界面地址: http://服务器IP:2017"
+        echo "2. 首次访问需要创建管理员账号"
+        echo "3. 导入节点订阅或节点链接后即可使用"
+    else
+        echo -e "${RED}V2rayA服务启动失败${NC}"
+        echo "请检查日志: journalctl -u v2raya"
+    fi
+}
+
+# 手动下载安装V2rayA
+install_v2raya_manual() {
+    echo -e "${YELLOW}正在手动安装V2rayA...${NC}"
+
     # 安装依赖
     if [ "$OS" == "CentOS" ] || [ "$OS" == "AlmaLinux" ]; then
         yum install -y wget curl
@@ -1585,16 +1654,42 @@ install_v2raya() {
     fi
 
     # 安装V2ray-core (V2rayA依赖)
-    echo -e "${YELLOW}正在安装V2ray-core...${NC}"
-    bash <(curl -L https://ghproxy.com/https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+    echo -e "${YELLOW}正在安装V2ray内核...${NC}"
 
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}V2ray-core安装失败${NC}"
+    # 使用v2rayA提供的内核安装方法
+    if [ "$OS" == "Ubuntu" ] || [ "$OS" == "Debian" ]; then
+        # 添加v2ray内核仓库
+        apt update
+        apt install -y ca-certificates
+        wget -qO - https://ghproxy.com/https://raw.githubusercontent.com/v2rayA/v2rayA/main/pubkey.asc | apt-key add -
+        echo "deb https://ghproxy.com/https://apt.v2raya.org/ v2raya main" | tee /etc/apt/sources.list.d/v2raya.list
+        apt update
+        apt install -y v2raya
+    elif [ "$OS" == "CentOS" ] || [ "$OS" == "AlmaLinux" ]; then
+        # 使用yum/dnf安装
+        dnf install -y dnf-plugins-core
+        dnf copr enable -y mzz2017/v2raya
+        dnf install -y v2raya
+    fi
+
+    if [ $? -eq 0 ]; then
+        systemctl enable v2raya
+        systemctl start v2raya
+
+        if systemctl is-active --quiet v2raya; then
+            echo -e "${GREEN}V2rayA安装成功！${NC}"
+            echo -e "\n${YELLOW}使用说明：${NC}"
+            echo "1. Web管理界面地址: http://服务器IP:2017"
+            echo "2. 首次访问需要创建管理员账号"
+            echo "3. 导入节点订阅或节点链接后即可使用"
+        else
+            echo -e "${RED}V2rayA服务启动失败${NC}"
+        fi
         return
     fi
 
-    # 安装V2rayA
-    echo -e "${YELLOW}正在下载V2rayA...${NC}"
+    # 如果仓库安装失败，尝试手动下载二进制文件
+    echo -e "${YELLOW}仓库安装失败，尝试手动下载二进制文件...${NC}"
 
     # 根据系统架构选择下载链接
     ARCH=$(uname -m)
@@ -1614,39 +1709,58 @@ install_v2raya() {
             ;;
     esac
 
-    # 获取最新版本号 (使用ghproxy加速API访问)
-    LATEST_VERSION=$(curl -s https://ghproxy.com/https://api.github.com/repos/v2rayA/v2rayA/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-
-    if [ -z "$LATEST_VERSION" ]; then
-        echo -e "${YELLOW}无法获取最新版本，使用默认版本v2.2.7.5${NC}"
-        LATEST_VERSION="v2.2.7.5"
-    fi
+    # 使用固定的已知可用版本
+    LATEST_VERSION="v2.2.6.7"
 
     echo -e "${YELLOW}正在下载版本: ${LATEST_VERSION}${NC}"
 
-    # 使用ghproxy加速下载
-    wget -O /tmp/v2raya "https://ghproxy.com/https://github.com/v2rayA/v2rayA/releases/download/${LATEST_VERSION}/${V2RAYA_FILE}"
+    # 使用多个镜像源尝试下载
+    download_success=false
 
-    if [ $? -ne 0 ]; then
-        echo -e "${YELLOW}ghproxy下载失败，尝试直接下载...${NC}"
-        wget -O /tmp/v2raya "https://github.com/v2rayA/v2rayA/releases/download/${LATEST_VERSION}/${V2RAYA_FILE}"
+    # 尝试ghproxy
+    if wget -O /tmp/v2raya "https://ghproxy.com/https://github.com/v2rayA/v2rayA/releases/download/${LATEST_VERSION}/${V2RAYA_FILE}" 2>/dev/null; then
+        download_success=true
+    fi
 
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}V2rayA下载失败${NC}"
-            return
+    # 如果ghproxy失败，尝试jsdelivr
+    if [ "$download_success" = false ]; then
+        if wget -O /tmp/v2raya "https://cdn.jsdelivr.net/gh/v2rayA/v2rayA@${LATEST_VERSION}/${V2RAYA_FILE}" 2>/dev/null; then
+            download_success=true
         fi
+    fi
+
+    # 最后尝试直连
+    if [ "$download_success" = false ]; then
+        if wget -O /tmp/v2raya "https://github.com/v2rayA/v2rayA/releases/download/${LATEST_VERSION}/${V2RAYA_FILE}" 2>/dev/null; then
+            download_success=true
+        fi
+    fi
+
+    if [ "$download_success" = false ]; then
+        echo -e "${RED}V2rayA下载失败${NC}"
+        return
     fi
 
     # 安装V2rayA
     mv /tmp/v2raya /usr/local/bin/v2raya
     chmod +x /usr/local/bin/v2raya
 
+    # 安装v2ray内核
+    if ! command -v v2ray &>/dev/null; then
+        echo -e "${YELLOW}正在安装V2ray内核...${NC}"
+        wget -O /tmp/v2ray-linux.zip "https://ghproxy.com/https://github.com/v2fly/v2ray-core/releases/latest/download/v2ray-linux-64.zip"
+        if [ $? -eq 0 ]; then
+            unzip -o /tmp/v2ray-linux.zip -d /usr/local/bin/
+            chmod +x /usr/local/bin/v2ray
+        fi
+    fi
+
     # 创建systemd服务文件
     cat > /etc/systemd/system/v2raya.service << EOF
 [Unit]
 Description=V2rayA Service
 Documentation=https://github.com/v2rayA/v2rayA
-After=network.target nss-lookup.target v2ray.service
+After=network.target nss-lookup.target
 Wants=network.target
 
 [Service]
@@ -1679,17 +1793,142 @@ EOF
     fi
 }
 
+# Docker安装V2rayA
+install_v2raya_docker() {
+    echo -e "${YELLOW}正在通过Docker安装V2rayA...${NC}"
+
+    # 检查Docker是否已安装
+    if ! command -v docker &>/dev/null; then
+        echo -e "${YELLOW}正在安装Docker...${NC}"
+        curl -fsSL https://get.docker.com | sh
+        systemctl start docker
+        systemctl enable docker
+    fi
+
+    # 检查并清理已存在的容器
+    if docker ps -a | grep -q v2raya; then
+        echo -e "${YELLOW}发现已存在的V2rayA容器，正在清理...${NC}"
+        docker stop v2raya 2>/dev/null
+        docker rm v2raya 2>/dev/null
+    fi
+
+    # 运行V2rayA容器
+    docker run -d \
+        --name v2raya \
+        --restart always \
+        --privileged \
+        --network host \
+        -v /lib/modules:/lib/modules:ro \
+        -v /etc/resolv.conf:/etc/resolv.conf \
+        -v /etc/v2raya:/etc/v2raya \
+        mzz2017/v2raya:latest
+
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}V2rayA Docker容器安装成功！${NC}"
+        echo -e "\n${YELLOW}使用说明：${NC}"
+        echo "1. Web管理界面地址: http://服务器IP:2017"
+        echo "2. 首次访问需要创建管理员账号"
+        echo "3. 导入节点订阅或节点链接后即可使用"
+    else
+        echo -e "${RED}V2rayA Docker容器启动失败${NC}"
+    fi
+}
+        echo -e "\n${YELLOW}使用说明：${NC}"
+        echo "1. Web管理界面地址: http://服务器IP:2017"
+        echo "2. 首次访问需要创建管理员账号"
+        echo "3. 导入节点订阅或节点链接后即可使用"
+        echo "4. 默认SOCKS5代理: 127.0.0.1:10808"
+        echo "5. 默认HTTP代理: 127.0.0.1:10809"
+    else
+        echo -e "${RED}V2rayA服务启动失败${NC}"
+        echo "请检查日志: journalctl -u v2raya"
+    fi
+}
+
 # 安装V2ray-core (命令行版本)
 install_v2ray_core() {
     echo -e "${YELLOW}正在安装V2ray-core...${NC}"
 
-    # 使用官方安装脚本 (ghproxy加速)
-    bash <(curl -L https://ghproxy.com/https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+    detect_os
 
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}V2ray-core安装失败${NC}"
+    # 安装依赖
+    if [ "$OS" == "CentOS" ] || [ "$OS" == "AlmaLinux" ]; then
+        yum install -y wget curl unzip
+    elif [ "$OS" == "Ubuntu" ]; then
+        apt update
+        apt install -y wget curl unzip
+    fi
+
+    # 获取最新版本
+    LATEST_VERSION=$(curl -s https://ghproxy.com/https://api.github.com/repos/v2fly/v2ray-core/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+
+    if [ -z "$LATEST_VERSION" ]; then
+        LATEST_VERSION="v5.7.0"
+    fi
+
+    echo -e "${YELLOW}正在下载版本: ${LATEST_VERSION}${NC}"
+
+    # 根据架构选择文件
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)
+            V2RAY_FILE="v2ray-linux-64.zip"
+            ;;
+        aarch64)
+            V2RAY_FILE="v2ray-linux-arm64-v8a.zip"
+            ;;
+        *)
+            echo -e "${RED}不支持的系统架构: $ARCH${NC}"
+            return
+            ;;
+    esac
+
+    # 多镜像源下载
+    download_success=false
+
+    # 尝试ghproxy
+    if wget -q -O /tmp/v2ray.zip "https://ghproxy.com/https://github.com/v2fly/v2ray-core/releases/download/${LATEST_VERSION}/${V2RAY_FILE}"; then
+        download_success=true
+    fi
+
+    # 尝试直连
+    if [ "$download_success" = false ]; then
+        if wget -q -O /tmp/v2ray.zip "https://github.com/v2fly/v2ray-core/releases/download/${LATEST_VERSION}/${V2RAY_FILE}"; then
+            download_success=true
+        fi
+    fi
+
+    if [ "$download_success" = false ]; then
+        echo -e "${RED}V2ray-core下载失败${NC}"
         return
     fi
+
+    # 解压安装
+    unzip -o /tmp/v2ray.zip -d /usr/local/bin/
+    chmod +x /usr/local/bin/v2ray
+    chmod +x /usr/local/bin/v2ctl
+
+    # 创建配置目录
+    mkdir -p /usr/local/etc/v2ray
+
+    # 创建systemd服务
+    cat > /etc/systemd/system/v2ray.service << EOF
+[Unit]
+Description=V2ray Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/v2ray -config /usr/local/etc/v2ray/config.json
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable v2ray
 
     echo -e "${GREEN}V2ray-core安装成功！${NC}"
     echo -e "\n${YELLOW}使用说明：${NC}"
@@ -1806,13 +2045,85 @@ EOF
 install_xray_core() {
     echo -e "${YELLOW}正在安装Xray-core...${NC}"
 
-    # 使用官方安装脚本 (ghproxy加速)
-    bash <(curl -L https://ghproxy.com/https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
+    detect_os
 
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Xray-core安装失败${NC}"
+    # 安装依赖
+    if [ "$OS" == "CentOS" ] || [ "$OS" == "AlmaLinux" ]; then
+        yum install -y wget curl unzip
+    elif [ "$OS" == "Ubuntu" ]; then
+        apt update
+        apt install -y wget curl unzip
+    fi
+
+    # 获取最新版本
+    LATEST_VERSION=$(curl -s https://ghproxy.com/https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+
+    if [ -z "$LATEST_VERSION" ]; then
+        LATEST_VERSION="v1.8.0"
+    fi
+
+    echo -e "${YELLOW}正在下载版本: ${LATEST_VERSION}${NC}"
+
+    # 根据架构选择文件
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)
+            XRAY_FILE="Xray-linux-64.zip"
+            ;;
+        aarch64)
+            XRAY_FILE="Xray-linux-arm64-v8a.zip"
+            ;;
+        *)
+            echo -e "${RED}不支持的系统架构: $ARCH${NC}"
+            return
+            ;;
+    esac
+
+    # 多镜像源下载
+    download_success=false
+
+    # 尝试ghproxy
+    if wget -q -O /tmp/xray.zip "https://ghproxy.com/https://github.com/XTLS/Xray-core/releases/download/${LATEST_VERSION}/${XRAY_FILE}"; then
+        download_success=true
+    fi
+
+    # 尝试直连
+    if [ "$download_success" = false ]; then
+        if wget -q -O /tmp/xray.zip "https://github.com/XTLS/Xray-core/releases/download/${LATEST_VERSION}/${XRAY_FILE}"; then
+            download_success=true
+        fi
+    fi
+
+    if [ "$download_success" = false ]; then
+        echo -e "${RED}Xray-core下载失败${NC}"
         return
     fi
+
+    # 解压安装
+    unzip -o /tmp/xray.zip -d /usr/local/bin/
+    chmod +x /usr/local/bin/xray
+
+    # 创建配置目录
+    mkdir -p /usr/local/etc/xray
+
+    # 创建systemd服务
+    cat > /etc/systemd/system/xray.service << EOF
+[Unit]
+Description=Xray Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/xray -config /usr/local/etc/xray/config.json
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable xray
 
     echo -e "${GREEN}Xray-core安装成功！${NC}"
     echo -e "\n${YELLOW}使用说明：${NC}"
